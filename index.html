@@ -1,0 +1,1852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Atlas — Geography Trainer</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<style>
+  :root {
+    --bg: #0b1020;
+    --bg-2: #0f1530;
+    --panel: rgba(20, 26, 54, 0.72);
+    --panel-solid: #141a36;
+    --stroke: rgba(255, 255, 255, 0.08);
+    --ink: #e8ecff;
+    --ink-dim: #9aa3c7;
+    --ink-faint: #6b739a;
+    --accent: #6ee7ff;
+    --accent-2: #a78bfa;
+    --accent-3: #fb7185;
+    --good: #34d399;
+    --bad: #f87171;
+    --warn: #fbbf24;
+    --map-land: #2a3157;
+    --map-land-2: #323a66;
+    --map-sea: #070b18;
+    --shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+    --radius: 18px;
+    --radius-sm: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: radial-gradient(1200px 800px at 70% -10%, #16204a 0%, var(--bg) 55%) fixed;
+    color: var(--ink);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  ::selection { background: var(--accent-2); color: #0b1020; }
+
+  /* ---------- Layout ---------- */
+  #app { position: fixed; inset: 0; display: flex; }
+  #map-wrap { position: relative; flex: 1; min-width: 0; }
+  #map { width: 100%; height: 100%; display: block; cursor: grab; }
+  #map.dragging { cursor: grabbing; }
+  #fx-canvas { position: absolute; inset: 0; pointer-events: none; z-index: 40; }
+
+  /* ---------- Brand ---------- */
+  .brand {
+    position: absolute; top: 18px; left: 22px; z-index: 30;
+    display: flex; align-items: center; gap: 10px; pointer-events: none;
+    text-shadow: 0 2px 18px rgba(0,0,0,.6);
+  }
+  .brand .logo {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: conic-gradient(from 210deg, var(--accent), var(--accent-2), var(--accent-3), var(--accent));
+    box-shadow: 0 6px 22px rgba(110,231,255,.35);
+  }
+  .brand h1 { font-size: 19px; margin: 0; letter-spacing: .3px; font-weight: 800; }
+  .brand h1 span { color: var(--ink-dim); font-weight: 600; }
+
+  /* ---------- Top-right controls ---------- */
+  .topbar {
+    position: absolute; top: 14px; right: 16px; z-index: 30;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .icon-btn {
+    width: 40px; height: 40px; display: grid; place-items: center;
+    border-radius: 12px; border: 1px solid var(--stroke);
+    background: var(--panel); color: var(--ink); backdrop-filter: blur(12px);
+    font-size: 17px; transition: transform .12s ease, background .15s ease, border-color .15s;
+  }
+  .icon-btn:hover { transform: translateY(-1px); background: rgba(40,48,90,.85); border-color: rgba(255,255,255,.16); }
+  .icon-btn.active { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0b1020; border-color: transparent; }
+
+  /* ---------- Control panel ---------- */
+  #panel {
+    position: absolute; top: 70px; left: 22px; z-index: 25;
+    width: 300px; max-height: calc(100% - 110px);
+    background: var(--panel); backdrop-filter: blur(16px);
+    border: 1px solid var(--stroke); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden auto;
+    transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .25s;
+  }
+  #panel.collapsed { transform: translateX(-340px); opacity: 0; pointer-events: none; }
+  .panel-body { padding: 16px 16px 18px; }
+  .section { margin-bottom: 18px; }
+  .section:last-child { margin-bottom: 4px; }
+  .section h3 {
+    margin: 0 0 9px; font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 700;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    font-size: 12px; padding: 7px 11px; border-radius: 999px;
+    border: 1px solid var(--stroke); background: rgba(255,255,255,.03);
+    color: var(--ink-dim); transition: all .14s ease; user-select: none;
+  }
+  .chip:hover { color: var(--ink); border-color: rgba(255,255,255,.2); }
+  .chip.on {
+    background: linear-gradient(135deg, rgba(110,231,255,.22), rgba(167,139,250,.22));
+    color: var(--ink); border-color: rgba(110,231,255,.5);
+  }
+  select, .field {
+    width: 100%; padding: 9px 11px; border-radius: var(--radius-sm);
+    background: rgba(8,12,26,.6); color: var(--ink); border: 1px solid var(--stroke);
+    font-size: 13px; outline: none;
+  }
+  select:focus { border-color: var(--accent); }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row + .row { margin-top: 8px; }
+  .seg { display: flex; background: rgba(8,12,26,.6); border: 1px solid var(--stroke); border-radius: var(--radius-sm); padding: 3px; gap: 3px; }
+  .seg button {
+    flex: 1; border: 0; background: transparent; color: var(--ink-dim);
+    padding: 7px 6px; border-radius: 9px; font-size: 12.5px; font-weight: 600; transition: all .14s;
+  }
+  .seg button.on { background: linear-gradient(135deg,var(--accent),var(--accent-2)); color: #0b1020; }
+  .toggle { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; font-size: 13.5px; }
+  .toggle small { color: var(--ink-faint); font-size: 11px; display: block; margin-top: 1px; }
+  .switch { position: relative; width: 42px; height: 24px; flex: none; }
+  .switch input { display: none; }
+  .switch span {
+    position: absolute; inset: 0; border-radius: 999px; background: rgba(255,255,255,.12);
+    transition: background .2s;
+  }
+  .switch span::after {
+    content: ""; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px;
+    border-radius: 50%; background: #fff; transition: transform .2s;
+  }
+  .switch input:checked + span { background: linear-gradient(135deg,var(--accent),var(--accent-2)); }
+  .switch input:checked + span::after { transform: translateX(18px); }
+
+  .btn {
+    width: 100%; padding: 12px; border-radius: var(--radius-sm); border: 0;
+    font-weight: 800; font-size: 14px; letter-spacing: .3px; color: #0b1020;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 10px 26px rgba(110,231,255,.28); transition: transform .12s, filter .15s;
+  }
+  .btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
+  .btn:active { transform: translateY(0); }
+  .btn.ghost { background: rgba(255,255,255,.06); color: var(--ink); box-shadow: none; border: 1px solid var(--stroke); font-weight: 700; }
+  .btn.ghost:hover { background: rgba(255,255,255,.1); }
+  .btn.small { padding: 9px; font-size: 12.5px; }
+  .split { display: flex; gap: 8px; }
+
+  .hint { font-size: 11.5px; color: var(--ink-faint); line-height: 1.5; margin-top: 8px; }
+
+  /* ---------- Quiz HUD ---------- */
+  #hud {
+    position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+    z-index: 28; width: min(560px, calc(100% - 60px));
+    background: var(--panel); backdrop-filter: blur(16px);
+    border: 1px solid var(--stroke); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 16px 18px;
+    transition: opacity .25s, transform .25s;
+  }
+  #hud.hidden { opacity: 0; transform: translateX(-50%) translateY(20px); pointer-events: none; }
+  .q-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .q-mode { font-size: 10.5px; letter-spacing: 1.3px; text-transform: uppercase; color: var(--accent); font-weight: 800; }
+  .q-progress { font-size: 11px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  .q-prompt { font-size: 20px; font-weight: 800; line-height: 1.25; }
+  .q-prompt .em { background: linear-gradient(135deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .q-flag-prompt { display: flex; align-items: center; gap: 14px; }
+  .q-flag-prompt img { width: 96px; height: auto; border-radius: 8px; box-shadow: 0 8px 22px rgba(0,0,0,.5); }
+  .q-sub { font-size: 12.5px; color: var(--ink-dim); margin-top: 4px; }
+
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 14px; }
+  .choice {
+    padding: 13px 14px; border-radius: var(--radius-sm); border: 1px solid var(--stroke);
+    background: rgba(255,255,255,.04); color: var(--ink); font-size: 14px; font-weight: 600;
+    text-align: left; transition: all .14s ease; position: relative;
+  }
+  .choice:hover:not(:disabled) { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.25); transform: translateY(-1px); }
+  .choice:disabled { cursor: default; }
+  .choice.correct { background: linear-gradient(135deg, rgba(52,211,153,.25), rgba(52,211,153,.12)); border-color: var(--good); color: #d6ffe9; }
+  .choice.wrong { background: linear-gradient(135deg, rgba(248,113,113,.22), rgba(248,113,113,.1)); border-color: var(--bad); color: #ffd9d9; }
+
+  .map-actions { margin-top: 14px; display: flex; gap: 9px; }
+  .map-actions .btn { width: auto; flex: 1; }
+
+  /* ---------- Feedback reveal card ---------- */
+  #reveal {
+    position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
+    z-index: 29; width: min(560px, calc(100% - 60px));
+    background: var(--panel-solid); border: 1px solid var(--stroke);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px;
+    opacity: 0; pointer-events: none; transition: opacity .22s, transform .28s cubic-bezier(.2,.8,.2,1);
+  }
+  #reveal.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+  #reveal.show.good { box-shadow: 0 0 0 1.5px var(--good), var(--shadow); }
+  #reveal.show.bad { box-shadow: 0 0 0 1.5px var(--bad), var(--shadow); }
+  .rv-head { display: flex; align-items: center; gap: 13px; }
+  .rv-flag { width: 78px; height: auto; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.5); flex: none; }
+  .rv-flag-ph { width: 78px; height: 52px; border-radius: 8px; background: linear-gradient(135deg,#2a3157,#3a4480); display:grid; place-items:center; color: var(--ink-faint); font-size: 22px; flex:none; }
+  .rv-name { font-size: 19px; font-weight: 800; }
+  .rv-cap { font-size: 13px; color: var(--ink-dim); margin-top: 2px; }
+  .rv-verdict { font-size: 12px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; margin-left: auto; }
+  .rv-verdict.good { color: var(--good); }
+  .rv-verdict.bad { color: var(--bad); }
+  .rv-meta { margin-top: 10px; font-size: 12px; color: var(--ink-faint); display:flex; gap:14px; flex-wrap: wrap; }
+  .rv-next { margin-top: 12px; }
+
+  /* ---------- Scorebar ---------- */
+  #scorebar {
+    position: absolute; top: 70px; right: 16px; z-index: 26;
+    display: flex; gap: 10px;
+  }
+  .stat-pill {
+    background: var(--panel); backdrop-filter: blur(12px); border: 1px solid var(--stroke);
+    border-radius: 14px; padding: 8px 13px; text-align: center; min-width: 60px;
+  }
+  .stat-pill .v { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  .stat-pill .l { font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-faint); margin-top: 4px; }
+  .stat-pill.streak .v { color: var(--warn); }
+  #timer-ring { display:none; }
+  #scorebar.timed #timer-ring { display: block; }
+
+  /* ---------- Toast ---------- */
+  #toast {
+    position: absolute; top: 18px; left: 50%; transform: translateX(-50%) translateY(-80px);
+    z-index: 50; background: var(--panel-solid); border: 1px solid var(--stroke);
+    padding: 11px 18px; border-radius: 14px; font-size: 13.5px; font-weight: 600;
+    box-shadow: var(--shadow); transition: transform .3s cubic-bezier(.2,.8,.2,1); max-width: 80%;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.good { border-color: var(--good); }
+  #toast.bad { border-color: var(--bad); }
+
+  /* ---------- Modal (results / stats) ---------- */
+  .modal-back {
+    position: absolute; inset: 0; z-index: 60; background: rgba(5,8,18,.7);
+    backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; padding: 24px;
+  }
+  .modal-back.show { display: flex; }
+  .modal {
+    width: min(720px, 100%); max-height: calc(100% - 20px); overflow: auto;
+    background: var(--panel-solid); border: 1px solid var(--stroke);
+    border-radius: 22px; box-shadow: var(--shadow); padding: 26px;
+    animation: pop .3s cubic-bezier(.2,.8,.2,1);
+  }
+  @keyframes pop { from { transform: scale(.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .modal h2 { margin: 0 0 4px; font-size: 24px; }
+  .modal .sub { color: var(--ink-dim); font-size: 13.5px; margin-bottom: 20px; }
+  .close-x {
+    position: absolute; top: 16px; right: 18px; font-size: 22px; color: var(--ink-dim);
+    background: none; border: 0; line-height: 1;
+  }
+  .close-x:hover { color: var(--ink); }
+
+  .grid-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
+  .kpi { background: rgba(255,255,255,.04); border: 1px solid var(--stroke); border-radius: 14px; padding: 14px; }
+  .kpi .v { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .kpi .l { font-size: 11px; color: var(--ink-faint); margin-top: 3px; text-transform: uppercase; letter-spacing: .6px; }
+  .kpi .v.good { color: var(--good); } .kpi .v.accent { color: var(--accent); } .kpi .v.warn { color: var(--warn); }
+
+  .stat-block { margin-bottom: 22px; }
+  .stat-block h4 { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 11px; }
+  .bar-row { display: grid; grid-template-columns: 130px 1fr 46px; gap: 10px; align-items: center; margin-bottom: 7px; font-size: 12.5px; }
+  .bar-track { height: 9px; background: rgba(255,255,255,.07); border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  .bar-row .num { text-align: right; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+  .weak-list { display: flex; flex-direction: column; gap: 6px; }
+  .weak-item { display: flex; align-items: center; gap: 10px; font-size: 13px; background: rgba(255,255,255,.03); border-radius: 10px; padding: 8px 11px; }
+  .weak-item .flag { width: 26px; border-radius: 4px; flex: none; }
+  .weak-item .nm { font-weight: 600; }
+  .weak-item .miss { margin-left: auto; color: var(--bad); font-size: 11.5px; font-weight: 700; }
+  .mastery-boxes { display: flex; gap: 8px; }
+  .mbox { flex: 1; text-align: center; border-radius: 12px; padding: 12px 6px; border: 1px solid var(--stroke); }
+  .mbox .v { font-size: 22px; font-weight: 800; } .mbox .l { font-size: 10px; color: var(--ink-faint); margin-top: 3px; }
+  svg.spark { width: 100%; height: 70px; display: block; }
+  .empty-note { color: var(--ink-faint); font-size: 13px; padding: 8px 0; }
+
+  /* ---------- Loading / error ---------- */
+  #loader {
+    position: absolute; inset: 0; z-index: 80; display: grid; place-items: center;
+    background: radial-gradient(900px 600px at 60% 20%, #16204a 0%, var(--bg) 60%);
+  }
+  #loader.gone { display: none; }
+  .load-card { text-align: center; }
+  .spinner {
+    width: 54px; height: 54px; margin: 0 auto 18px; border-radius: 50%;
+    border: 4px solid rgba(255,255,255,.1); border-top-color: var(--accent);
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .load-card h2 { margin: 0 0 6px; font-size: 22px; }
+  .load-card p { color: var(--ink-dim); font-size: 14px; margin: 0; }
+  #load-err { display: none; max-width: 420px; }
+  #load-err.show { display: block; }
+
+  /* country / marker styling driven by JS classes */
+  .country { stroke: var(--map-sea); stroke-width: .3px; cursor: pointer; transition: fill .25s ease; }
+  .country:hover { stroke: var(--accent); stroke-width: .9px; }
+  .country.selectable-hover:hover { filter: drop-shadow(0 0 6px rgba(110,231,255,.8)); }
+  .marker { fill: var(--accent-2); stroke: #fff; stroke-width: .5px; pointer-events: none; }
+  .marker-hit { fill: transparent; cursor: pointer; }
+  .label { fill: var(--ink); font-size: 8px; pointer-events: none; text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 2px; stroke-opacity: .55; font-weight: 600; }
+
+  @media (max-width: 720px) {
+    #panel { width: calc(100% - 44px); }
+    .choices { grid-template-columns: 1fr; }
+    .grid-stats { grid-template-columns: repeat(2, 1fr); }
+    #scorebar { top: auto; bottom: 200px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map-wrap">
+    <svg id="map"></svg>
+    <canvas id="fx-canvas"></canvas>
+
+    <div class="brand">
+      <div class="logo"></div>
+      <h1>Atlas <span>· geography trainer</span></h1>
+    </div>
+
+    <div class="topbar">
+      <button class="icon-btn" id="btn-panel" title="Toggle controls (Tab)">☰</button>
+      <button class="icon-btn" id="btn-heatmap" title="Mastery heatmap">🌡️</button>
+      <button class="icon-btn" id="btn-sound" title="Sound (off)">🔇</button>
+      <button class="icon-btn" id="btn-stats" title="Stats dashboard">📊</button>
+    </div>
+
+    <div id="scorebar">
+      <div class="stat-pill"><div class="v" id="sb-score">0</div><div class="l">Score</div></div>
+      <div class="stat-pill"><div class="v" id="sb-acc">—</div><div class="l">Accuracy</div></div>
+      <div class="stat-pill streak"><div class="v" id="sb-streak">0</div><div class="l">Streak</div></div>
+      <div class="stat-pill" id="timer-ring"><div class="v" id="sb-timer">15</div><div class="l">Timer</div></div>
+    </div>
+
+    <!-- Control panel -->
+    <aside id="panel">
+      <div class="panel-body">
+        <div class="section">
+          <h3>Quiz Modes</h3>
+          <div class="chips" id="mode-chips"></div>
+        </div>
+
+        <div class="section">
+          <h3>Continent</h3>
+          <select id="filter-region"></select>
+        </div>
+        <div class="section">
+          <h3>Subregion</h3>
+          <select id="filter-subregion"></select>
+        </div>
+
+        <div class="section">
+          <h3>Session</h3>
+          <div class="seg" id="seg-session">
+            <button data-v="round" class="on">Round</button>
+            <button data-v="endless">Endless</button>
+          </div>
+          <div class="row" id="round-len-row" style="margin-top:8px;">
+            <span style="font-size:12.5px;color:var(--ink-dim);flex:1;">Questions</span>
+            <select id="round-len" style="width:90px;">
+              <option>10</option><option selected>15</option><option>20</option>
+            </select>
+          </div>
+          <label class="toggle">
+            <div>Timed challenge <small>Adds a per-question clock (scoring only)</small></div>
+            <span class="switch"><input type="checkbox" id="opt-timed"><span></span></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <button class="btn" id="btn-start">Start session ▸</button>
+          <div class="split" style="margin-top:9px;">
+            <button class="btn ghost small" id="btn-export">Export</button>
+            <button class="btn ghost small" id="btn-import">Import</button>
+            <button class="btn ghost small" id="btn-reset" title="Reset all progress">Reset</button>
+          </div>
+          <input type="file" id="import-file" accept="application/json" hidden>
+          <div class="hint">
+            Scroll to zoom · drag to pan · double-click to focus · <b>Esc</b> resets the view.
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Quiz HUD -->
+    <div id="hud" class="hidden">
+      <div class="q-top">
+        <span class="q-mode" id="q-mode">—</span>
+        <span class="q-progress" id="q-progress"></span>
+      </div>
+      <div id="q-body"></div>
+      <div id="q-controls"></div>
+    </div>
+
+    <!-- Reveal card -->
+    <div id="reveal">
+      <div class="rv-head">
+        <img class="rv-flag" id="rv-flag" alt="">
+        <div>
+          <div class="rv-name" id="rv-name"></div>
+          <div class="rv-cap" id="rv-cap"></div>
+        </div>
+        <div class="rv-verdict" id="rv-verdict"></div>
+      </div>
+      <div class="rv-meta" id="rv-meta"></div>
+      <button class="btn rv-next" id="rv-next">Next ▸</button>
+    </div>
+
+    <div id="toast"></div>
+  </div>
+</div>
+
+<!-- Loader -->
+<div id="loader">
+  <div class="load-card">
+    <div id="load-spin" class="spinner"></div>
+    <h2 id="load-title">Loading the world…</h2>
+    <p id="load-msg">Fetching map &amp; country data</p>
+    <div id="load-err">
+      <button class="btn" id="btn-retry" style="margin-top:18px;width:auto;padding:11px 22px;">Retry</button>
+    </div>
+  </div>
+</div>
+
+<!-- Results modal -->
+<div class="modal-back" id="results-back">
+  <div class="modal" style="position:relative;">
+    <button class="close-x" data-close="results-back">×</button>
+    <h2 id="res-title">Round complete! 🎉</h2>
+    <div class="sub" id="res-sub"></div>
+    <div class="grid-stats" id="res-kpis"></div>
+    <div class="stat-block" id="res-weak"></div>
+    <div class="split">
+      <button class="btn" id="res-again">Play again</button>
+      <button class="btn ghost" id="res-stats">View full stats</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stats modal -->
+<div class="modal-back" id="stats-back">
+  <div class="modal" style="position:relative;">
+    <button class="close-x" data-close="stats-back">×</button>
+    <h2>Your progress</h2>
+    <div class="sub" id="stats-sub"></div>
+    <div class="grid-stats" id="stats-kpis"></div>
+    <div class="stat-block">
+      <h4>Mastery (Leitner boxes)</h4>
+      <div class="mastery-boxes" id="stats-mastery"></div>
+    </div>
+    <div class="stat-block">
+      <h4>Response time trend (recent answers)</h4>
+      <svg class="spark" id="stats-spark" viewBox="0 0 600 70" preserveAspectRatio="none"></svg>
+    </div>
+    <div class="stat-block">
+      <h4>Streak history</h4>
+      <svg class="spark" id="stats-streak" viewBox="0 0 600 70" preserveAspectRatio="none"></svg>
+    </div>
+    <div class="stat-block">
+      <h4>Accuracy by region</h4>
+      <div id="stats-region"></div>
+    </div>
+    <div class="stat-block">
+      <h4>Weakest items</h4>
+      <div class="weak-list" id="stats-weak"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   ATLAS — Geography Trainer (single file)
+   Architecture:
+     - PURE logic (Leitner, selection, distractors, filters, thresholds)
+       lives in a plain object and is exposed on window.GEO for testing.
+     - State module: one versioned object persisted to localStorage.
+     - Data layer: fetch + join + cache.
+     - Map module: d3 rendering, zoom/pan, tween, markers.
+     - Quiz controller: mode-agnostic loop over 5 modes.
+     - UI wiring + polish (heatmap, confetti, audio, stats dashboard).
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   CONSTANTS
+   ------------------------------------------------------------------- */
+const DATA_KEY = "geo.dataset.v2"; // bumped: 50m TopoJSON (more microstate geometry)
+const STATE_KEY = "geo.state.v2";
+const STATE_VERSION = 2;
+// 50m resolution gives geometry to most small states (Singapore, Malta, Kosovo,
+// Bahrain, Brunei, …) that the 110m file omits. The handful that still lack a
+// polygon at 50m fall back to centroid markers, and map modes skip them.
+const TOPO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json";
+// Country metadata: mledoze/countries — the upstream dataset REST Countries is
+// built from (identical schema: name.common, capital, region, subregion,
+// cca2/cca3/ccn3, borders, unMember, independent, latlng, area). Served with
+// CORS by jsdelivr and pinned to a tag. The restcountries.com v3.1 API this PRD
+// originally named has been fully deprecated (301s to a "deprecated" stub with
+// no CORS header), so we read the same data straight from its source.
+const REST_URL = "https://cdn.jsdelivr.net/gh/mledoze/countries@5.1.0/countries.json";
+// Non-UN states we still want as sovereign quiz items (cca3). Kosovo is "UNK" in
+// this dataset (not XKX), Taiwan "TWN", Vatican is already unMember.
+const EXTRA_SOVEREIGN = new Set(["TWN", "UNK", "PSE"]);
+const MODES = {
+  find:    { id: "find",    label: "Find on map",   map: true,  short: "Find" },
+  capital: { id: "capital", label: "→ Capital",      map: false, short: "Capital" },
+  flag:    { id: "flag",    label: "Flag → Country", map: false, short: "Flag" },
+  name:    { id: "name",    label: "Name the country", map: true, short: "Name" },
+  border:  { id: "border",  label: "Borders",        map: true,  short: "Borders" }
+};
+const BOX_COLORS = ["#f87171", "#fb923c", "#fbbf24", "#a3e635", "#34d399"]; // box 1..5 red→green
+const TIMED_SECONDS = 15;
+
+/* ---------------------------------------------------------------------
+   PURE LOGIC  (no DOM, no D3) — exposed as window.GEO
+   ------------------------------------------------------------------- */
+const Logic = {
+  // Leitner: correct -> promote (max 5); wrong -> reset to box 1.
+  leitnerUpdate(entry, correct, now = Date.now()) {
+    const e = entry && typeof entry.box === "number"
+      ? Object.assign({}, entry)
+      : { box: 1, seen: 0, correct: 0, lastSeen: 0 };
+    e.seen += 1;
+    if (correct) {
+      e.correct += 1;
+      e.box = Math.min(5, e.box + 1);
+    } else {
+      e.box = 1;
+    }
+    e.lastSeen = now;
+    return e;
+  },
+
+  // Selection weight: heavily favour low-box, never-seen, and long-overdue items.
+  itemWeight(entry, now = Date.now()) {
+    if (!entry || !entry.seen) return 12; // never seen → very likely
+    const boxWeight = (6 - entry.box) * (6 - entry.box); // box1=25 … box5=1
+    // due-ness: longer since last seen relative to box interval => higher
+    const intervalMs = [0, 1, 3, 8, 18, 40][entry.box] * 60 * 1000; // synthetic spacing
+    const elapsed = now - (entry.lastSeen || 0);
+    const due = intervalMs ? Math.min(3, elapsed / intervalMs) : 1;
+    return Math.max(0.4, boxWeight * (0.5 + 0.5 * due));
+  },
+
+  // Weighted random pick over a pool of country objects for a given mode.
+  // leitner: map of "id:mode" -> entry. Returns a country object.
+  selectNextItem(pool, leitner, mode, opts = {}) {
+    if (!pool || !pool.length) return null;
+    const now = opts.now || Date.now();
+    const rng = opts.rng || Math.random;
+    const avoidId = opts.avoidId;
+    const candidates = pool.filter(c => c.id !== avoidId);
+    const list = candidates.length ? candidates : pool;
+    const weights = list.map(c => Logic.itemWeight(leitner[c.id + ":" + mode], now));
+    const total = weights.reduce((a, b) => a + b, 0);
+    let r = rng() * total;
+    for (let i = 0; i < list.length; i++) {
+      r -= weights[i];
+      if (r <= 0) return list[i];
+    }
+    return list[list.length - 1];
+  },
+
+  // Region-biased multiple-choice distractors. Returns shuffled options incl. the answer.
+  makeChoices(item, pool, n = 4, opts = {}) {
+    const rng = opts.rng || Math.random;
+    const sameRegion = pool.filter(c => c.id !== item.id && c.region === item.region);
+    const other = pool.filter(c => c.id !== item.id && c.region !== item.region);
+    Logic._shuffle(sameRegion, rng);
+    Logic._shuffle(other, rng);
+    const picks = [];
+    const want = n - 1;
+    while (picks.length < want && sameRegion.length) picks.push(sameRegion.pop());
+    while (picks.length < want && other.length) picks.push(other.pop());
+    const options = picks.concat([item]);
+    Logic._shuffle(options, rng);
+    return options;
+  },
+
+  // Region/subregion filter over the country list.
+  filterPool(countries, region, subregion) {
+    return countries.filter(c => {
+      if (region && region !== "all" && c.region !== region) return false;
+      if (subregion && subregion !== "all" && c.subregion !== subregion) return false;
+      return true;
+    });
+  },
+
+  // Tiny-country threshold from a projected pixel area (bbox area in px²).
+  isTiny(pxArea, threshold = 60) {
+    return pxArea < threshold;
+  },
+
+  // A country can be a target in map modes (find / name / border) only if it
+  // has a rendered polygon to click/highlight/frame. The 50m TopoJSON omits a
+  // few true microstates; those stay answerable in capital/flag (no map needed).
+  hasMapGeometry(country) {
+    return !!(country && country.feature);
+  },
+
+  // Pool of countries usable as map-mode targets within the active filter.
+  mapPool(pool) {
+    return pool.filter(Logic.hasMapGeometry);
+  },
+
+  // Mastery score 0..1 for an item across a mode set (avg normalised box).
+  masteryFor(leitner, id, modes) {
+    let sum = 0, count = 0;
+    for (const m of modes) {
+      const e = leitner[id + ":" + m];
+      if (e && e.seen) { sum += (e.box - 1) / 4; count++; }
+    }
+    return count ? sum / count : null; // null = untouched
+  },
+
+  _shuffle(arr, rng = Math.random) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+};
+
+/* ---------------------------------------------------------------------
+   STATE MODULE — single versioned object persisted to localStorage
+   ------------------------------------------------------------------- */
+const State = {
+  data: null,
+  defaults() {
+    return {
+      version: STATE_VERSION,
+      settings: {
+        modes: ["find", "capital", "flag"],
+        region: "all",
+        subregion: "all",
+        session: "round",
+        roundLen: 15,
+        timed: false,
+        sound: false,
+        heatmap: false
+      },
+      leitner: {},     // "id:mode" -> {box, seen, correct, lastSeen}
+      history: [],      // [{id, mode, correct, ms, region, t}]
+      stats: { answered: 0, correct: 0, bestStreak: 0, streakHistory: [] }
+    };
+  },
+  load() {
+    let raw = null;
+    try { raw = JSON.parse(localStorage.getItem(STATE_KEY)); } catch (e) { raw = null; }
+    this.data = this._migrate(raw) || this.defaults();
+    return this.data;
+  },
+  _migrate(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    // Migration guard: merge onto defaults so missing keys are filled.
+    const d = this.defaults();
+    const out = Object.assign({}, d, raw);
+    out.version = STATE_VERSION;
+    out.settings = Object.assign({}, d.settings, raw.settings || {});
+    out.stats = Object.assign({}, d.stats, raw.stats || {});
+    out.leitner = raw.leitner && typeof raw.leitner === "object" ? raw.leitner : {};
+    out.history = Array.isArray(raw.history) ? raw.history : [];
+    return out;
+  },
+  save() {
+    try { localStorage.setItem(STATE_KEY, JSON.stringify(this.data)); } catch (e) { /* quota */ }
+  },
+  exportState() {
+    return JSON.stringify(this.data, null, 2);
+  },
+  importState(json) {
+    const parsed = typeof json === "string" ? JSON.parse(json) : json;
+    const migrated = this._migrate(parsed);
+    if (!migrated) throw new Error("Invalid state file");
+    this.data = migrated;
+    this.save();
+    return this.data;
+  },
+  reset() {
+    this.data = this.defaults();
+    this.save();
+    return this.data;
+  }
+};
+
+/* ---------------------------------------------------------------------
+   DATA LAYER — fetch + join + cache
+   ------------------------------------------------------------------- */
+const DataLayer = {
+  countries: [],          // sovereign country objects
+  byCcn3: new Map(),      // padded ccn3 -> country
+  byCca3: new Map(),
+  features: [],           // GeoJSON features for ALL topo countries (for rendering)
+  featureById: new Map(), // padded ccn3 -> feature
+
+  pad3(n) { return String(n).padStart(3, "0"); },
+
+  async load(onStatus) {
+    // 1) Try cache first.
+    const cached = this._readCache();
+    if (cached) {
+      onStatus && onStatus("Loaded from cache");
+      this._hydrate(cached.topo, cached.meta);
+      return { fromCache: true };
+    }
+    onStatus && onStatus("Fetching map & country data…");
+    const [topo, meta] = await Promise.all([
+      fetch(TOPO_URL).then(r => { if (!r.ok) throw new Error("topo " + r.status); return r.json(); }),
+      fetch(REST_URL).then(r => { if (!r.ok) throw new Error("rest " + r.status); return r.json(); })
+    ]);
+    this._hydrate(topo, meta);
+    this._writeCache(topo, meta);
+    return { fromCache: false };
+  },
+
+  _hydrate(topo, meta) {
+    // Build features from topojson.
+    const obj = topo.objects.countries;
+    const fc = topojson.feature(topo, obj);
+    this.features = fc.features;
+    this.featureById = new Map();
+    for (const f of this.features) {
+      this.featureById.set(this.pad3(f.id), f);
+    }
+    // Index REST metadata by padded ccn3.
+    const metaByCcn3 = new Map();
+    for (const m of meta) {
+      if (m.ccn3) metaByCcn3.set(this.pad3(m.ccn3), m);
+    }
+    // Build sovereign country list.
+    const keep = [];
+    this.byCcn3 = new Map();
+    this.byCca3 = new Map();
+    for (const m of meta) {
+      // Sovereign = UN member (or independent state, as a schema-robust OR),
+      // plus the explicitly-included non-UN states.
+      const isSov = m.unMember === true || m.independent === true
+        || (m.cca3 && EXTRA_SOVEREIGN.has(m.cca3));
+      if (!isSov) continue;
+      const ccn3 = m.ccn3 ? this.pad3(m.ccn3) : null;
+      const feat = ccn3 ? this.featureById.get(ccn3) : null;
+      const country = {
+        id: ccn3 || m.cca3,
+        ccn3: ccn3,
+        cca2: m.cca2 || null,
+        cca3: m.cca3 || null,
+        name: (m.name && m.name.common) || m.cca3 || "Unknown",
+        official: (m.name && m.name.official) || "",
+        capital: Array.isArray(m.capital) && m.capital.length ? m.capital[0] : "—",
+        region: m.region || "Other",
+        subregion: m.subregion || m.region || "Other",
+        // mledoze carries only an emoji flag; flag images come from flagcdn by
+        // cca2 (the PRD's stated alternative). SVG scales crisply at any zoom.
+        flagSvg: m.cca2 ? `https://flagcdn.com/${m.cca2.toLowerCase()}.svg` : "",
+        flagEmoji: m.flag || "",
+        flagAlt: (m.name && m.name.common) ? m.name.common + " flag" : "",
+        area: m.area || 0,
+        latlng: m.latlng || null,
+        _borders: m.borders || [],   // raw cca3 codes
+        neighbours: [],              // resolved later
+        feature: feat,
+        centroid: null               // [lng,lat] geographic
+      };
+      keep.push(country);
+      if (ccn3) this.byCcn3.set(ccn3, country);
+      if (m.cca3) this.byCca3.set(m.cca3, country);
+    }
+    // Geographic centroids (fallback to latlng) for framing/markers.
+    for (const c of keep) {
+      if (c.feature) {
+        try { c.centroid = d3.geoCentroid(c.feature); } catch (e) { c.centroid = null; }
+      }
+      if ((!c.centroid || isNaN(c.centroid[0])) && c.latlng) {
+        c.centroid = [c.latlng[1], c.latlng[0]];
+      }
+    }
+    // Resolve borders (cca3) into neighbour objects within the kept set.
+    for (const c of keep) {
+      c.neighbours = c._borders
+        .map(code => this.byCca3.get(code))
+        .filter(Boolean);
+    }
+    this.countries = keep;
+  },
+
+  _readCache() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(DATA_KEY));
+      if (raw && raw.topo && raw.meta && Array.isArray(raw.meta)) return raw;
+    } catch (e) {}
+    return null;
+  },
+  _writeCache(topo, meta) {
+    try {
+      localStorage.setItem(DATA_KEY, JSON.stringify({ topo, meta, t: Date.now() }));
+    } catch (e) { /* dataset too big for quota — fine, refetch next time */ }
+  }
+};
+
+/* ---------------------------------------------------------------------
+   AUDIO — WebAudio beeps, muted by default
+   ------------------------------------------------------------------- */
+const Audio2 = {
+  ctx: null,
+  ensure() {
+    if (!this.ctx) {
+      try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { this.ctx = null; }
+    }
+    if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
+  },
+  blip(freqs, dur = 0.12, type = "sine") {
+    if (!State.data.settings.sound) return;
+    this.ensure();
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    freqs.forEach((f, i) => {
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = type; osc.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t0 + i * 0.06);
+      g.gain.exponentialRampToValueAtTime(0.18, t0 + i * 0.06 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.06 + dur);
+      osc.connect(g).connect(this.ctx.destination);
+      osc.start(t0 + i * 0.06); osc.stop(t0 + i * 0.06 + dur + 0.02);
+    });
+  },
+  correct() { this.blip([523, 784], 0.16, "triangle"); },
+  wrong()   { this.blip([220, 160], 0.2, "sawtooth"); },
+  milestone(){ this.blip([523, 659, 784, 1046], 0.18, "triangle"); }
+};
+
+/* ---------------------------------------------------------------------
+   CONFETTI — lightweight canvas burst
+   ------------------------------------------------------------------- */
+const Confetti = {
+  canvas: null, ctx: null, parts: [], raf: null,
+  init() {
+    this.canvas = document.getElementById("fx-canvas");
+    this.ctx = this.canvas.getContext("2d");
+    this._resize();
+    window.addEventListener("resize", () => this._resize());
+  },
+  _resize() {
+    this.canvas.width = this.canvas.clientWidth * devicePixelRatio;
+    this.canvas.height = this.canvas.clientHeight * devicePixelRatio;
+  },
+  burst(x, y, count = 90) {
+    const cols = ["#6ee7ff", "#a78bfa", "#fb7185", "#34d399", "#fbbf24"];
+    const px = (x == null ? this.canvas.clientWidth / 2 : x) * devicePixelRatio;
+    const py = (y == null ? this.canvas.clientHeight / 2 : y) * devicePixelRatio;
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = (3 + Math.random() * 8) * devicePixelRatio;
+      this.parts.push({
+        x: px, y: py,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 4 * devicePixelRatio,
+        g: 0.22 * devicePixelRatio, life: 1,
+        size: (4 + Math.random() * 5) * devicePixelRatio,
+        col: cols[i % cols.length], rot: Math.random() * 6, vr: (Math.random() - .5) * .4
+      });
+    }
+    if (!this.raf) this._loop();
+  },
+  _loop() {
+    const c = this.ctx;
+    c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.parts = this.parts.filter(p => p.life > 0);
+    for (const p of this.parts) {
+      p.vy += p.g; p.x += p.vx; p.y += p.vy; p.life -= 0.012; p.rot += p.vr;
+      c.save(); c.globalAlpha = Math.max(0, p.life); c.translate(p.x, p.y); c.rotate(p.rot);
+      c.fillStyle = p.col; c.fillRect(-p.size / 2, -p.size / 2, p.size, p.size); c.restore();
+    }
+    if (this.parts.length) this.raf = requestAnimationFrame(() => this._loop());
+    else { c.clearRect(0, 0, this.canvas.width, this.canvas.height); this.raf = null; }
+  }
+};
+
+/* ---------------------------------------------------------------------
+   MAP MODULE — d3 rendering, zoom/pan, tween, markers, heatmap
+   ------------------------------------------------------------------- */
+const MapView = {
+  svg: null, g: null, path: null, projection: null, zoom: null,
+  width: 0, height: 0,
+  onSelect: null,           // callback(country)
+  _regionColor: null,
+  tinyIds: new Set(),
+
+  REGION_BASE: {
+    "Africa": "#3b4a7a", "Americas": "#3a5a78", "Asia": "#5a4a7e",
+    "Europe": "#4a6e6e", "Oceania": "#6e5a4a", "Antarctic": "#3a4258", "Other": "#33395c"
+  },
+
+  init() {
+    this.svg = d3.select("#map");
+    const wrap = document.getElementById("map-wrap");
+    this.width = wrap.clientWidth;
+    this.height = wrap.clientHeight;
+    this.svg.attr("viewBox", [0, 0, this.width, this.height]);
+
+    // ocean
+    this.svg.append("rect").attr("class", "ocean")
+      .attr("width", this.width).attr("height", this.height)
+      .attr("fill", "var(--map-sea)");
+
+    // Fit the sphere into the canvas. A slightly larger bottom inset lifts the
+    // world a touch so the bottom-anchored quiz HUD never overlaps the southern
+    // continents; d3 still centres it on the unconstrained (vertical) axis.
+    this.projection = d3.geoEqualEarth()
+      .fitExtent([[12, 12], [this.width - 12, this.height - 96]],
+        { type: "Sphere" });
+    this.path = d3.geoPath(this.projection);
+
+    this.g = this.svg.append("g").attr("class", "world");
+
+    // graticule + sphere outline for depth
+    const graticule = d3.geoGraticule10();
+    this.g.append("path").datum({ type: "Sphere" })
+      .attr("d", this.path).attr("fill", "none").attr("stroke", "rgba(110,231,255,.08)").attr("stroke-width", 1.2);
+    this.g.append("path").datum(graticule)
+      .attr("d", this.path).attr("fill", "none").attr("stroke", "rgba(255,255,255,.04)").attr("stroke-width", .5);
+
+    this.gCountries = this.g.append("g").attr("class", "countries");
+    this.gMarkers = this.g.append("g").attr("class", "markers");
+    this.gLabels = this.g.append("g").attr("class", "labels");
+
+    // zoom behaviour
+    this.zoom = d3.zoom()
+      .scaleExtent([1, 14])
+      .translateExtent([[0, 0], [this.width, this.height]])
+      .on("zoom", (ev) => {
+        this.g.attr("transform", ev.transform);
+        // keep markers/labels readable
+        this.gMarkers.selectAll("circle.marker").attr("r", 2.4 / Math.sqrt(ev.transform.k));
+        this.gCountries.selectAll("path").attr("stroke-width", 0.3 / ev.transform.k);
+        this.gLabels.attr("opacity", ev.transform.k > 2.4 ? 1 : 0);
+      });
+    this.svg.call(this.zoom).on("dblclick.zoom", null); // we handle dblclick ourselves
+
+    this.svg.on("dblclick", (ev) => {
+      const [mx, my] = d3.pointer(ev);
+      this.zoomToPoint(mx, my, 4);
+    });
+    this.svg.on("mousedown", () => this.svg.node().classList.add("dragging"));
+    window.addEventListener("mouseup", () => this.svg.node().classList.remove("dragging"));
+  },
+
+  render() {
+    // Render ALL topo features (so unknown territories still draw), but only
+    // sovereign ones get interactive class + data binding for quiz selection.
+    const feats = DataLayer.features;
+    // compute tiny set from projected bbox area
+    this.tinyIds = new Set();
+    const self = this;
+
+    const sel = this.gCountries.selectAll("path.country")
+      .data(feats, d => d.id)
+      .join("path")
+      .attr("class", "country")
+      .attr("d", this.path)
+      .attr("fill", d => this._fillFor(d))
+      .on("click", function (ev, d) {
+        ev.stopPropagation();
+        const c = DataLayer.byCcn3.get(DataLayer.pad3(d.id));
+        if (c && self.onSelect) self.onSelect(c);
+      });
+
+    // markers for tiny sovereign countries
+    const markerData = [];
+    for (const c of DataLayer.countries) {
+      if (!c.feature) {
+        // no geometry at all (e.g., some microstates absent from 110m) → place from latlng
+        if (c.centroid) markerData.push(c);
+        continue;
+      }
+      const b = this.path.bounds(c.feature);
+      const area = Math.max(0, (b[1][0] - b[0][0])) * Math.max(0, (b[1][1] - b[0][1]));
+      if (Logic.isTiny(area)) { this.tinyIds.add(c.id); markerData.push(c); }
+    }
+
+    const proj = this.projection;
+    this.gMarkers.selectAll("g.mk").data(markerData, d => d.id).join(enter => {
+      const grp = enter.append("g").attr("class", "mk")
+        .attr("transform", d => {
+          const p = d.centroid ? proj(d.centroid) : null;
+          return p ? `translate(${p[0]},${p[1]})` : "translate(-99,-99)";
+        });
+      grp.append("circle").attr("class", "marker").attr("r", 2.4);
+      grp.append("circle").attr("class", "marker-hit").attr("r", 9)
+        .on("click", (ev, d) => { ev.stopPropagation(); if (self.onSelect) self.onSelect(d); });
+      return grp;
+    });
+
+    // labels (hidden by default; shown when zoomed and not in a hide-name mode)
+    this.gLabels.selectAll("text.label")
+      .data(DataLayer.countries.filter(c => c.centroid), d => d.id)
+      .join("text").attr("class", "label")
+      .attr("x", d => { const p = proj(d.centroid); return p ? p[0] : -99; })
+      .attr("y", d => { const p = proj(d.centroid); return p ? p[1] : -99; })
+      .text(d => d.name);
+    this.gLabels.attr("opacity", 0);
+  },
+
+  _fillFor(feature) {
+    const c = DataLayer.byCcn3.get(DataLayer.pad3(feature.id));
+    if (State.data.settings.heatmap && c) {
+      const m = Logic.masteryFor(State.data.leitner, c.id, Object.keys(MODES));
+      if (m == null) return "#222a4d";
+      const box = Math.min(4, Math.round(m * 4));
+      return BOX_COLORS[box];
+    }
+    if (!c) return "#1d2440"; // non-sovereign / territory
+    return this.REGION_BASE[c.region] || this.REGION_BASE.Other;
+  },
+
+  refreshColors() {
+    this.gCountries.selectAll("path.country")
+      .transition().duration(400)
+      .attr("fill", d => this._fillFor(d));
+  },
+
+  setLabelsAllowed(allowed) {
+    this._labelsAllowed = allowed;
+    const k = d3.zoomTransform(this.svg.node()).k;
+    this.gLabels.attr("opacity", allowed && k > 2.4 ? 1 : 0);
+  },
+
+  // Highlight helpers for quiz feedback / targets.
+  clearHighlights() {
+    this.gCountries.selectAll("path.country")
+      .classed("hl-good", false).classed("hl-bad", false).classed("hl-target", false)
+      .attr("stroke", "var(--map-sea)").attr("stroke-opacity", 1)
+      .filter(function () { return !d3.select(this).attr("data-keepfill"); });
+    this.gCountries.selectAll("path.country").attr("fill", d => this._fillFor(d));
+    this.gMarkers.selectAll("g.mk circle.marker").attr("fill", "var(--accent-2)");
+  },
+
+  paint(id, kind) {
+    // kind: 'good' | 'bad' | 'target'
+    const colors = { good: "#34d399", bad: "#f87171", target: "#fbbf24" };
+    const feat = DataLayer.featureById.get(DataLayer.pad3(id));
+    this.gCountries.selectAll("path.country")
+      .filter(d => DataLayer.pad3(d.id) === DataLayer.pad3(id))
+      .attr("fill", colors[kind])
+      .attr("stroke", "#fff").attr("stroke-opacity", .9);
+    // marker too
+    this.gMarkers.selectAll("g.mk")
+      .filter(d => d.id === id)
+      .select("circle.marker").attr("fill", colors[kind]);
+  },
+
+  flashSelect(id) {
+    this.gCountries.selectAll("path.country")
+      .filter(d => DataLayer.pad3(d.id) === DataLayer.pad3(id))
+      .interrupt()
+      .attr("stroke", "var(--accent)").attr("stroke-width", 2)
+      .transition().duration(500).attr("stroke-width", 0.3 / (d3.zoomTransform(this.svg.node()).k));
+  },
+
+  // Programmatic tweened transforms.
+  zoomToPoint(mx, my, k = 4) {
+    const t = d3.zoomIdentity
+      .translate(this.width / 2, this.height / 2)
+      .scale(k)
+      .translate(-mx, -my);
+    this.svg.transition().duration(750).call(this.zoom.transform, t);
+  },
+
+  reset() {
+    this.svg.transition().duration(750).call(this.zoom.transform, d3.zoomIdentity);
+  },
+
+  // Frame a country (or its bbox region) — used for microstate targets.
+  frameCountry(country, pad = 0.4) {
+    let feat = country.feature;
+    let bounds;
+    if (feat) bounds = this.path.bounds(feat);
+    else if (country.centroid) {
+      const p = this.projection(country.centroid);
+      bounds = [[p[0] - 30, p[1] - 30], [p[0] + 30, p[1] + 30]];
+    } else return;
+    const [[x0, y0], [x1, y1]] = bounds;
+    const dx = x1 - x0, dy = y1 - y0;
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    let k = Math.min(14, (1 - pad) / Math.max(dx / this.width, dy / this.height));
+    if (!isFinite(k) || k < 1) k = Math.min(6, this.tinyIds.has(country.id) ? 6 : 3);
+    k = Math.max(1.4, Math.min(k, this.tinyIds.has(country.id) ? 7 : 8));
+    const t = d3.zoomIdentity.translate(this.width / 2, this.height / 2).scale(k).translate(-cx, -cy);
+    this.svg.transition().duration(800).call(this.zoom.transform, t);
+  }
+};
+
+/* ---------------------------------------------------------------------
+   QUIZ CONTROLLER — mode-agnostic loop over 5 modes
+   ------------------------------------------------------------------- */
+const Quiz = {
+  active: false,
+  session: null,   // {mode kind, asked, total, score, streak, ...}
+  current: null,   // {item, mode, options, ...}
+  answered: false,
+  qStartTime: 0,
+  timerId: null,
+  timeLeft: 0,
+  borderState: null, // for border mode
+
+  pool() {
+    const s = State.data.settings;
+    return Logic.filterPool(DataLayer.countries, s.region, s.subregion);
+  },
+
+  activeModes() {
+    const m = State.data.settings.modes.filter(id => MODES[id]);
+    return m.length ? m : ["find"];
+  },
+
+  start() {
+    const s = State.data.settings;
+    const pool = this.pool();
+    if (pool.length < 4) {
+      UI.toast("Pick a broader region — need at least 4 countries.", "bad");
+      return;
+    }
+    this.active = true;
+    this.session = {
+      type: s.session,
+      total: s.session === "round" ? s.roundLen : Infinity,
+      timed: s.timed,
+      asked: 0, score: 0, streak: 0, bestStreak: 0,
+      correct: 0, log: []
+    };
+    document.getElementById("scorebar").classList.toggle("timed", s.timed);
+    UI.updateScorebar();
+    this.next();
+  },
+
+  stop() {
+    this.active = false;
+    this._clearTimer();
+    UI.hideHud();
+    UI.hideReveal();
+    MapView.clearHighlights();
+    MapView.setLabelsAllowed(true);
+  },
+
+  next() {
+    if (!this.active) return;
+    this.answered = false;
+    this.borderState = null;
+    UI.hideReveal();
+    MapView.clearHighlights();
+
+    if (this.session.asked >= this.session.total) { this.finish(); return; }
+
+    const modes = this.activeModes();
+    const mode = modes[Math.floor(Math.random() * modes.length)];
+    const pool = this.pool();
+    const mapMode = MODES[mode].map; // find / name / border need clickable geometry
+
+    // Map modes must target a country with a rendered polygon; capital/flag may
+    // target any country (incl. microstates the 50m file omits).
+    let item;
+    if (mode === "border") {
+      // Target must have geometry AND at least one neighbour that also has
+      // geometry within the active pool (so every required click is reachable).
+      const mapPool = Logic.mapPool(pool);
+      const borderPool = mapPool.filter(c =>
+        c.neighbours.some(n => Logic.hasMapGeometry(n) && pool.includes(n)));
+      if (!borderPool.length) return this._retryDifferentMode(mode);
+      item = Logic.selectNextItem(borderPool, State.data.leitner, mode, { avoidId: this.current && this.current.item.id });
+    } else if (mapMode) {
+      const mapPool = Logic.mapPool(pool);
+      if (!mapPool.length) return this._retryDifferentMode(mode);
+      item = Logic.selectNextItem(mapPool, State.data.leitner, mode, { avoidId: this.current && this.current.item.id });
+    } else {
+      item = Logic.selectNextItem(pool, State.data.leitner, mode, { avoidId: this.current && this.current.item.id });
+    }
+    if (!item) { this.finish(); return; }
+
+    this.current = { item, mode };
+    this.qStartTime = performance.now();
+    this.session.asked += 1;
+
+    // Map labels hidden during find & name (so it's not trivial). Visible-ish for capital/flag.
+    MapView.setLabelsAllowed(mode === "capital" || mode === "flag");
+
+    UI.renderQuestion(this.current);
+
+    if (mode === "find" || mode === "border" || mode === "name") {
+      // auto-frame microstate / region targets so they're reachable
+      if (mode === "border") {
+        MapView.frameCountry(item, 0.55);
+        MapView.paint(item.id, "target");
+        this.borderState = {
+          // Only neighbours that are both in the active pool AND have clickable
+          // geometry count toward the required set (the rest aren't selectable).
+          required: new Set(item.neighbours
+            .filter(n => pool.includes(n) && Logic.hasMapGeometry(n))
+            .map(n => n.id)),
+          clicked: new Set(), wrong: new Set()
+        };
+      } else if (mode === "name") {
+        // highlight the mystery country; player picks the name from MC
+        if (MapView.tinyIds.has(item.id)) MapView.frameCountry(item, 0.5);
+        MapView.paint(item.id, "target");
+      } else if (mode === "find") {
+        if (MapView.tinyIds.has(item.id)) MapView.frameCountry(item, 0.5);
+      }
+    }
+
+    if (this.session.timed) this._startTimer();
+    UI.updateScorebar();
+  },
+
+  _retryDifferentMode(badMode) {
+    const others = this.activeModes().filter(m => m !== badMode);
+    if (!others.length) { this.finish(); return; }
+    // Temporarily restrict to the remaining modes and recurse; `others` shrinks
+    // on each retry so this always terminates (worst case → finish()).
+    const saved = State.data.settings.modes;
+    State.data.settings.modes = others;
+    this.next();
+    State.data.settings.modes = saved;
+  },
+
+  // Handle a map click during find/name/border modes.
+  handleMapSelect(country) {
+    if (!this.active || this.answered) {
+      MapView.flashSelect(country.id);
+      UI.showQuickInfo(country);
+      return;
+    }
+    const mode = this.current.mode;
+    if (mode === "find") {
+      const correct = country.id === this.current.item.id;
+      MapView.paint(country.id, correct ? "good" : "bad");
+      if (!correct) MapView.paint(this.current.item.id, "target");
+      this.grade(correct);
+    } else if (mode === "border") {
+      const bs = this.borderState;
+      if (country.id === this.current.item.id) return; // ignore the target itself
+      if (bs.required.has(country.id)) {
+        if (!bs.clicked.has(country.id)) { bs.clicked.add(country.id); MapView.paint(country.id, "good"); Audio2.correct(); }
+      } else {
+        bs.wrong.add(country.id); MapView.paint(country.id, "bad"); Audio2.wrong();
+      }
+      UI.updateBorderProgress(bs);
+    }
+    // 'name' mode is answered via MC buttons, not map clicks.
+  },
+
+  submitBorder() {
+    if (this.answered || this.current.mode !== "border") return;
+    const bs = this.borderState;
+    const missing = [...bs.required].filter(id => !bs.clicked.has(id));
+    const correct = missing.length === 0 && bs.wrong.size === 0;
+    missing.forEach(id => MapView.paint(id, "target"));
+    this.grade(correct, { missing, wrong: [...bs.wrong] });
+  },
+
+  // Handle a multiple-choice answer.
+  handleChoice(chosen, btn) {
+    if (!this.active || this.answered) return;
+    const correct = chosen.id === this.current.item.id;
+    UI.markChoice(btn, correct, this.current.item.id);
+    if (this.current.mode === "name") {
+      MapView.paint(this.current.item.id, correct ? "good" : "target");
+    }
+    this.grade(correct);
+  },
+
+  // Central grading: update Leitner + stats + reveal.
+  grade(correct, extra = {}) {
+    if (this.answered) return;
+    this.answered = true;
+    this._clearTimer();
+    const ms = Math.round(performance.now() - this.qStartTime);
+    const { item, mode } = this.current;
+
+    // Leitner update
+    const key = item.id + ":" + mode;
+    State.data.leitner[key] = Logic.leitnerUpdate(State.data.leitner[key], correct);
+
+    // history + stats
+    State.data.history.push({ id: item.id, mode, correct, ms, region: item.region, t: Date.now() });
+    if (State.data.history.length > 1000) State.data.history.splice(0, State.data.history.length - 1000);
+    State.data.stats.answered += 1;
+    if (correct) State.data.stats.correct += 1;
+
+    // session score / streak
+    this.session.asked = this.session.asked; // already counted
+    if (correct) {
+      this.session.correct += 1;
+      this.session.streak += 1;
+      let pts = 100;
+      if (this.session.timed) pts += Math.round((this.timeLeft / TIMED_SECONDS) * 80);
+      pts += Math.min(60, this.session.streak * 6); // streak bonus
+      this.session.score += pts;
+      this.session.bestStreak = Math.max(this.session.bestStreak, this.session.streak);
+      State.data.stats.bestStreak = Math.max(State.data.stats.bestStreak, this.session.streak);
+      Audio2.correct();
+      UI.toast(this._praise(), "good");
+      // confetti on streak milestones
+      if (this.session.streak > 0 && this.session.streak % 5 === 0) {
+        Confetti.burst();
+        Audio2.milestone();
+        UI.toast("🔥 " + this.session.streak + " in a row!", "good");
+      }
+    } else {
+      this.session.streak = 0;
+      Audio2.wrong();
+      UI.toast("Not quite — it's " + item.name, "bad");
+    }
+    State.data.stats.streakHistory.push(this.session.streak);
+    if (State.data.stats.streakHistory.length > 200) State.data.stats.streakHistory.splice(0, State.data.stats.streakHistory.length - 200);
+
+    State.save();
+    if (State.data.settings.heatmap) MapView.refreshColors();
+    UI.updateScorebar();
+    UI.showReveal(item, correct, ms, mode, extra);
+  },
+
+  _praise() {
+    const p = ["Nailed it!", "Correct!", "Spot on!", "Yes!", "Geography wizard ✨", "Bang on."];
+    return p[Math.floor(Math.random() * p.length)];
+  },
+
+  finish() {
+    this.active = false;
+    this._clearTimer();
+    UI.hideHud();
+    UI.hideReveal();
+    MapView.clearHighlights();
+    MapView.reset();
+    MapView.setLabelsAllowed(true);
+    if (this.session.type === "round") {
+      Confetti.burst();
+      UI.showResults(this.session);
+    } else {
+      UI.toast("Endless session ended.", "good");
+    }
+  },
+
+  /* timed mode */
+  _startTimer() {
+    this.timeLeft = TIMED_SECONDS;
+    document.getElementById("sb-timer").textContent = this.timeLeft;
+    this.timerId = setInterval(() => {
+      this.timeLeft -= 1;
+      document.getElementById("sb-timer").textContent = Math.max(0, this.timeLeft);
+      if (this.timeLeft <= 0) {
+        this._clearTimer();
+        if (!this.answered) {
+          if (this.current.mode === "border") this.submitBorder();
+          else {
+            MapView.paint(this.current.item.id, "target");
+            this.grade(false);
+          }
+        }
+      }
+    }, 1000);
+  },
+  _clearTimer() { if (this.timerId) { clearInterval(this.timerId); this.timerId = null; } }
+};
+
+/* ---------------------------------------------------------------------
+   UI — wiring, rendering of HUD/reveal/modals, dashboards
+   ------------------------------------------------------------------- */
+const UI = {
+  $(id) { return document.getElementById(id); },
+
+  init() {
+    this._buildModeChips();
+    this._buildRegionFilters();
+    this._wireControls();
+    this._wireKeys();
+    this._applySettingsToUI();
+  },
+
+  /* --- control panel --- */
+  _buildModeChips() {
+    const host = this.$("mode-chips");
+    host.innerHTML = "";
+    Object.values(MODES).forEach(m => {
+      const chip = document.createElement("button");
+      chip.className = "chip" + (State.data.settings.modes.includes(m.id) ? " on" : "");
+      chip.textContent = m.label;
+      chip.dataset.mode = m.id;
+      chip.onclick = () => {
+        const set = new Set(State.data.settings.modes);
+        if (set.has(m.id)) { if (set.size > 1) set.delete(m.id); }
+        else set.add(m.id);
+        State.data.settings.modes = [...set];
+        chip.classList.toggle("on", set.has(m.id));
+        State.save();
+      };
+      host.appendChild(chip);
+    });
+  },
+
+  _buildRegionFilters() {
+    const regions = Array.from(new Set(DataLayer.countries.map(c => c.region))).sort();
+    const rSel = this.$("filter-region");
+    rSel.innerHTML = '<option value="all">All continents</option>' +
+      regions.map(r => `<option value="${r}">${r}</option>`).join("");
+    rSel.value = State.data.settings.region;
+    rSel.onchange = () => {
+      State.data.settings.region = rSel.value;
+      State.data.settings.subregion = "all";
+      this._buildSubregionFilter();
+      State.save();
+    };
+    this._buildSubregionFilter();
+  },
+
+  _buildSubregionFilter() {
+    const region = State.data.settings.region;
+    const sSel = this.$("filter-subregion");
+    const subs = Array.from(new Set(
+      DataLayer.countries
+        .filter(c => region === "all" || c.region === region)
+        .map(c => c.subregion)
+    )).sort();
+    sSel.innerHTML = '<option value="all">All subregions</option>' +
+      subs.map(s => `<option value="${s}">${s}</option>`).join("");
+    sSel.value = subs.includes(State.data.settings.subregion) ? State.data.settings.subregion : "all";
+    State.data.settings.subregion = sSel.value;
+    sSel.onchange = () => { State.data.settings.subregion = sSel.value; State.save(); };
+  },
+
+  _wireControls() {
+    // session segmented
+    document.querySelectorAll("#seg-session button").forEach(b => {
+      b.onclick = () => {
+        document.querySelectorAll("#seg-session button").forEach(x => x.classList.remove("on"));
+        b.classList.add("on");
+        State.data.settings.session = b.dataset.v;
+        this.$("round-len-row").style.opacity = b.dataset.v === "round" ? "1" : ".4";
+        State.save();
+      };
+    });
+    this.$("round-len").onchange = e => { State.data.settings.roundLen = +e.target.value; State.save(); };
+    this.$("opt-timed").onchange = e => { State.data.settings.timed = e.target.checked; State.save(); };
+
+    this.$("btn-start").onclick = () => { Audio2.ensure(); Quiz.start(); };
+
+    // topbar
+    this.$("btn-panel").onclick = () => this.$("panel").classList.toggle("collapsed");
+    this.$("btn-heatmap").onclick = () => this._toggleHeatmap();
+    this.$("btn-sound").onclick = () => this._toggleSound();
+    this.$("btn-stats").onclick = () => this.showStats();
+
+    // export / import / reset
+    this.$("btn-export").onclick = () => this._export();
+    this.$("btn-import").onclick = () => this.$("import-file").click();
+    this.$("import-file").onchange = e => this._import(e.target.files[0]);
+    this.$("btn-reset").onclick = () => {
+      if (confirm("Reset all progress and settings?")) {
+        State.reset(); this._applySettingsToUI(); this._buildModeChips();
+        this._buildRegionFilters(); MapView.refreshColors(); this.updateScorebar();
+        this.toast("Progress reset.", "good");
+      }
+    };
+
+    // reveal next
+    this.$("rv-next").onclick = () => Quiz.next();
+
+    // modal close buttons
+    document.querySelectorAll("[data-close]").forEach(b => {
+      b.onclick = () => this.$(b.dataset.close).classList.remove("show");
+    });
+    this.$("res-again").onclick = () => { this.$("results-back").classList.remove("show"); Quiz.start(); };
+    this.$("res-stats").onclick = () => { this.$("results-back").classList.remove("show"); this.showStats(); };
+  },
+
+  _wireKeys() {
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { MapView.reset(); }
+      else if (e.key === "Tab" && !e.target.matches("input,select")) {
+        e.preventDefault(); this.$("panel").classList.toggle("collapsed");
+      } else if (e.key === "Enter" && Quiz.answered && this.$("reveal").classList.contains("show")) {
+        Quiz.next();
+      } else if (/^[1-4]$/.test(e.key) && !Quiz.answered) {
+        const btns = document.querySelectorAll("#q-controls .choice");
+        const b = btns[+e.key - 1]; if (b) b.click();
+      }
+    });
+  },
+
+  _applySettingsToUI() {
+    const s = State.data.settings;
+    document.querySelectorAll("#seg-session button").forEach(b =>
+      b.classList.toggle("on", b.dataset.v === s.session));
+    this.$("round-len").value = s.roundLen;
+    this.$("round-len-row").style.opacity = s.session === "round" ? "1" : ".4";
+    this.$("opt-timed").checked = s.timed;
+    this.$("btn-heatmap").classList.toggle("active", s.heatmap);
+    this._reflectSound();
+  },
+
+  _toggleHeatmap() {
+    const s = State.data.settings;
+    s.heatmap = !s.heatmap;
+    this.$("btn-heatmap").classList.toggle("active", s.heatmap);
+    State.save();
+    MapView.refreshColors();
+    this.toast(s.heatmap ? "Mastery heatmap on" : "Heatmap off");
+  },
+
+  _toggleSound() {
+    const s = State.data.settings;
+    s.sound = !s.sound;
+    State.save();
+    this._reflectSound();
+    if (s.sound) { Audio2.ensure(); Audio2.correct(); }
+  },
+  _reflectSound() {
+    const on = State.data.settings.sound;
+    const b = this.$("btn-sound");
+    b.textContent = on ? "🔊" : "🔇";
+    b.classList.toggle("active", on);
+    b.title = "Sound (" + (on ? "on" : "off") + ")";
+  },
+
+  /* --- scorebar --- */
+  updateScorebar() {
+    const st = State.data.stats;
+    const acc = st.answered ? Math.round((st.correct / st.answered) * 100) + "%" : "—";
+    this.$("sb-acc").textContent = acc;
+    if (Quiz.session) {
+      this.$("sb-score").textContent = Quiz.session.score;
+      this.$("sb-streak").textContent = Quiz.session.streak;
+    } else {
+      this.$("sb-score").textContent = 0;
+      this.$("sb-streak").textContent = 0;
+    }
+  },
+
+  /* --- question rendering --- */
+  renderQuestion(cur) {
+    const { item, mode } = cur;
+    const hud = this.$("hud");
+    hud.classList.remove("hidden");
+    this.$("q-mode").textContent = MODES[mode].label;
+    const prog = Quiz.session.type === "round"
+      ? `${Quiz.session.asked} / ${Quiz.session.total}`
+      : `Q${Quiz.session.asked} · endless`;
+    this.$("q-progress").textContent = prog;
+
+    const body = this.$("q-body");
+    const controls = this.$("q-controls");
+    body.innerHTML = ""; controls.innerHTML = "";
+
+    if (mode === "find") {
+      body.innerHTML = `<div class="q-prompt">Find <span class="em">${item.name}</span> on the map</div>
+        <div class="q-sub">Click the country (zoom in for small ones)</div>`;
+    } else if (mode === "capital") {
+      body.innerHTML = `<div class="q-prompt">What is the capital of <span class="em">${item.name}</span>?</div>`;
+      this._renderCapitalChoices(item, controls);
+    } else if (mode === "flag") {
+      body.innerHTML = `<div class="q-flag-prompt">
+          <img id="q-flag-img" alt="flag" src="${item.flagSvg}">
+          <div><div class="q-prompt">Which country?</div>
+          <div class="q-sub">Identify the flag</div></div></div>`;
+      const img = body.querySelector("#q-flag-img");
+      img.onerror = () => { img.replaceWith(Object.assign(document.createElement("div"),
+        { className: "rv-flag-ph", style: "width:96px;height:64px", textContent: "🏳" })); };
+      this._renderCountryChoices(item, controls);
+    } else if (mode === "name") {
+      body.innerHTML = `<div class="q-prompt">Name the <span class="em">highlighted</span> country</div>
+        <div class="q-sub">It's glowing on the map</div>`;
+      this._renderCountryChoices(item, controls);
+    } else if (mode === "border") {
+      body.innerHTML = `<div class="q-prompt">Click every country bordering <span class="em">${item.name}</span></div>
+        <div class="q-sub" id="border-prog">0 / ${Quiz.borderState ? "" : ""}</div>`;
+      const actions = document.createElement("div");
+      actions.className = "map-actions";
+      actions.innerHTML = `<button class="btn ghost" id="border-skip">No neighbours / skip</button>
+        <button class="btn" id="border-submit">Submit answer</button>`;
+      controls.appendChild(actions);
+      controls.querySelector("#border-submit").onclick = () => Quiz.submitBorder();
+      controls.querySelector("#border-skip").onclick = () => Quiz.submitBorder();
+      // set initial count after borderState exists (next() sets it just after render in find/border path)
+      setTimeout(() => this.updateBorderProgress(Quiz.borderState), 0);
+    }
+  },
+
+  _renderCapitalChoices(item, host) {
+    const opts = Logic.makeChoices(item, Quiz.pool(), 4);
+    const grid = document.createElement("div"); grid.className = "choices";
+    opts.forEach(o => {
+      const b = document.createElement("button");
+      b.className = "choice"; b.textContent = o.capital;
+      b.onclick = () => Quiz.handleChoice(o, b);
+      grid.appendChild(b);
+    });
+    host.appendChild(grid);
+  },
+
+  _renderCountryChoices(item, host) {
+    const opts = Logic.makeChoices(item, Quiz.pool(), 4);
+    const grid = document.createElement("div"); grid.className = "choices";
+    opts.forEach(o => {
+      const b = document.createElement("button");
+      b.className = "choice"; b.textContent = o.name;
+      b.onclick = () => Quiz.handleChoice(o, b);
+      grid.appendChild(b);
+    });
+    host.appendChild(grid);
+  },
+
+  markChoice(btn, correct, answerId) {
+    document.querySelectorAll("#q-controls .choice").forEach(b => {
+      b.disabled = true;
+      if (b.textContent === DataLayer.byCcn3.get(answerId)?.name ||
+          b.textContent === DataLayer.byCcn3.get(answerId)?.capital) {
+        b.classList.add("correct");
+      }
+    });
+    if (!correct) btn.classList.add("wrong");
+  },
+
+  updateBorderProgress(bs) {
+    if (!bs) return;
+    const el = this.$("border-prog");
+    if (el) el.textContent = `${bs.clicked.size} / ${bs.required.size} found` +
+      (bs.wrong.size ? ` · ${bs.wrong.size} wrong` : "");
+  },
+
+  /* --- reveal feedback --- */
+  showReveal(item, correct, ms, mode, extra) {
+    this.$("hud").classList.add("hidden");
+    const rv = this.$("reveal");
+    rv.classList.remove("good", "bad");
+    rv.classList.add("show", correct ? "good" : "bad");
+    const img = this.$("rv-flag");
+    img.style.display = "";
+    img.src = item.flagSvg;
+    img.onerror = () => { img.style.display = "none"; };
+    this.$("rv-name").textContent = item.name;
+    this.$("rv-cap").textContent = "Capital: " + item.capital + " · " + item.subregion;
+    const v = this.$("rv-verdict");
+    v.textContent = correct ? "✓ Correct" : "✕ Missed";
+    v.className = "rv-verdict " + (correct ? "good" : "bad");
+
+    const meta = [];
+    meta.push("Region: " + item.region);
+    if (item.neighbours.length) meta.push("Borders: " + item.neighbours.length);
+    meta.push("Time: " + (ms / 1000).toFixed(1) + "s");
+    if (mode === "border" && extra) {
+      if (extra.missing && extra.missing.length)
+        meta.push("Missed: " + extra.missing.map(id => DataLayer.byCcn3.get(id)?.name || id).join(", "));
+      if (extra.wrong && extra.wrong.length)
+        meta.push("Wrong: " + extra.wrong.map(id => DataLayer.byCcn3.get(id)?.name || id).join(", "));
+    }
+    this.$("rv-meta").innerHTML = meta.map(m => `<span>${m}</span>`).join("");
+  },
+  hideReveal() { this.$("reveal").classList.remove("show", "good", "bad"); },
+  hideHud() { this.$("hud").classList.add("hidden"); },
+
+  showQuickInfo(country) {
+    this.toast(`${country.name} — capital ${country.capital}`);
+  },
+
+  /* --- toast --- */
+  _toastTimer: null,
+  toast(msg, kind) {
+    const t = this.$("toast");
+    t.textContent = msg;
+    t.className = "show" + (kind ? " " + kind : "");
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+  },
+
+  /* --- results modal --- */
+  showResults(session) {
+    const acc = session.asked ? Math.round((session.correct / session.asked) * 100) : 0;
+    this.$("res-title").textContent = acc >= 80 ? "Brilliant round! 🎉" : acc >= 50 ? "Nice work! 👏" : "Keep practising! 💪";
+    this.$("res-sub").textContent = `${session.correct} of ${session.asked} correct`;
+    this.$("res-kpis").innerHTML = `
+      <div class="kpi"><div class="v accent">${session.score}</div><div class="l">Score</div></div>
+      <div class="kpi"><div class="v good">${acc}%</div><div class="l">Accuracy</div></div>
+      <div class="kpi"><div class="v warn">${session.bestStreak}</div><div class="l">Best streak</div></div>
+      <div class="kpi"><div class="v">${session.asked}</div><div class="l">Questions</div></div>`;
+    // weakest from this round
+    const misses = session.log || [];
+    this.$("res-weak").innerHTML = "";
+    this.$("results-back").classList.add("show");
+  },
+
+  /* --- stats dashboard --- */
+  showStats() {
+    const st = State.data.stats, hist = State.data.history, leit = State.data.leitner;
+    const acc = st.answered ? Math.round((st.correct / st.answered) * 100) : 0;
+    this.$("stats-sub").textContent = st.answered
+      ? `${st.answered} questions answered all-time` : "No questions answered yet — start a session!";
+
+    this.$("stats-kpis").innerHTML = `
+      <div class="kpi"><div class="v accent">${st.answered}</div><div class="l">Answered</div></div>
+      <div class="kpi"><div class="v good">${acc}%</div><div class="l">Accuracy</div></div>
+      <div class="kpi"><div class="v warn">${st.bestStreak}</div><div class="l">Best streak</div></div>
+      <div class="kpi"><div class="v">${this._masteredCount()}</div><div class="l">Mastered</div></div>`;
+
+    // mastery boxes (count distinct items by their max box across modes)
+    const boxCounts = [0, 0, 0, 0, 0];
+    const itemBox = {};
+    for (const k in leit) {
+      const id = k.split(":")[0];
+      itemBox[id] = Math.max(itemBox[id] || 1, leit[k].box);
+    }
+    Object.values(itemBox).forEach(b => boxCounts[b - 1]++);
+    this.$("stats-mastery").innerHTML = boxCounts.map((c, i) =>
+      `<div class="mbox" style="border-color:${BOX_COLORS[i]}55"><div class="v" style="color:${BOX_COLORS[i]}">${c}</div><div class="l">Box ${i + 1}</div></div>`
+    ).join("");
+
+    // response time trend
+    this._spark("stats-spark", hist.slice(-40).map(h => h.ms), { invert: true, unit: "ms" });
+    // streak history
+    this._spark("stats-streak", st.streakHistory.slice(-60), { unit: "" });
+
+    // accuracy by region
+    const reg = {};
+    hist.forEach(h => { reg[h.region] = reg[h.region] || { a: 0, c: 0 }; reg[h.region].a++; if (h.correct) reg[h.region].c++; });
+    const regHost = this.$("stats-region");
+    const regKeys = Object.keys(reg).sort();
+    regHost.innerHTML = regKeys.length ? regKeys.map(r => {
+      const pct = Math.round((reg[r].c / reg[r].a) * 100);
+      return `<div class="bar-row"><span>${r}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+        <span class="num">${pct}%</span></div>`;
+    }).join("") : `<div class="empty-note">No data yet.</div>`;
+
+    // weakest items: by miss count
+    const miss = {};
+    hist.forEach(h => { if (!h.correct) { miss[h.id] = (miss[h.id] || 0) + 1; } });
+    const weak = Object.entries(miss).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const wHost = this.$("stats-weak");
+    wHost.innerHTML = weak.length ? weak.map(([id, n]) => {
+      const c = DataLayer.byCcn3.get(id) || DataLayer.byCca3.get(id);
+      if (!c) return "";
+      return `<div class="weak-item"><img class="flag" src="${c.flagSvg}" onerror="this.style.visibility='hidden'">
+        <span class="nm">${c.name}</span><span class="miss">${n} miss${n > 1 ? "es" : ""}</span></div>`;
+    }).join("") : `<div class="empty-note">No misses recorded — nice!</div>`;
+
+    this.$("stats-back").classList.add("show");
+  },
+
+  _masteredCount() {
+    const leit = State.data.leitner; const itemBox = {};
+    for (const k in leit) { const id = k.split(":")[0]; itemBox[id] = Math.max(itemBox[id] || 1, leit[k].box); }
+    return Object.values(itemBox).filter(b => b >= 5).length;
+  },
+
+  _spark(svgId, values, opts = {}) {
+    const svg = d3.select("#" + svgId);
+    svg.selectAll("*").remove();
+    const W = 600, H = 70;
+    if (!values || values.length < 2) {
+      svg.append("text").attr("x", 8).attr("y", 38).attr("fill", "#6b739a").attr("font-size", 12)
+        .text("Not enough data yet.");
+      return;
+    }
+    const max = Math.max(...values, 1), min = Math.min(...values, 0);
+    const x = d3.scaleLinear().domain([0, values.length - 1]).range([4, W - 4]);
+    const y = d3.scaleLinear().domain([min, max]).range([H - 6, 6]);
+    const line = d3.line().x((d, i) => x(i)).y(d => y(d)).curve(d3.curveMonotoneX);
+    const area = d3.area().x((d, i) => x(i)).y0(H).y1(d => y(d)).curve(d3.curveMonotoneX);
+    const id = svgId + "-grad";
+    const defs = svg.append("defs");
+    const lg = defs.append("linearGradient").attr("id", id).attr("x1", 0).attr("y1", 0).attr("x2", 0).attr("y2", 1);
+    lg.append("stop").attr("offset", "0%").attr("stop-color", "#6ee7ff").attr("stop-opacity", .35);
+    lg.append("stop").attr("offset", "100%").attr("stop-color", "#6ee7ff").attr("stop-opacity", 0);
+    svg.append("path").attr("d", area(values)).attr("fill", `url(#${id})`);
+    svg.append("path").attr("d", line(values)).attr("fill", "none")
+      .attr("stroke", "#6ee7ff").attr("stroke-width", 2).attr("stroke-linejoin", "round");
+  }
+};
+
+/* ---------------------------------------------------------------------
+   BOOTSTRAP
+   ------------------------------------------------------------------- */
+async function boot() {
+  State.load();
+  const loader = document.getElementById("loader");
+  const setMsg = (m) => { document.getElementById("load-msg").textContent = m; };
+  const showError = () => {
+    document.getElementById("load-spin").style.display = "none";
+    document.getElementById("load-title").textContent = "Couldn't load data";
+    setMsg("Check your connection — the world map & country data need to download once.");
+    document.getElementById("load-err").classList.add("show");
+  };
+
+  try {
+    await DataLayer.load(setMsg);
+    if (!DataLayer.countries.length) throw new Error("empty dataset");
+    Confetti.init();
+    MapView.init();
+    MapView.render();
+    MapView.onSelect = (c) => Quiz.handleMapSelect(c);
+    UI.init();
+    if (State.data.settings.heatmap) MapView.refreshColors();
+    UI.updateScorebar();
+    loader.classList.add("gone");
+  } catch (err) {
+    console.warn("Boot failed:", err);
+    showError();
+  }
+}
+
+document.getElementById("btn-retry").addEventListener("click", () => {
+  // hard retry: clear potentially-bad cache then reload
+  document.getElementById("load-err").classList.remove("show");
+  document.getElementById("load-spin").style.display = "";
+  document.getElementById("load-title").textContent = "Loading the world…";
+  boot();
+});
+
+/* expose pure logic + key modules for headless testing */
+window.GEO = {
+  Logic, State, DataLayer, MapView, Quiz, MODES,
+  // convenience for tests:
+  get countries() { return DataLayer.countries; }
+};
+
+/* export/import helpers bound here to keep UI lean */
+UI._export = function () {
+  const blob = new Blob([State.exportState()], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "atlas-progress.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  UI.toast("Progress exported.", "good");
+};
+UI._import = function (file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      State.importState(reader.result);
+      UI._applySettingsToUI(); UI._buildModeChips(); UI._buildRegionFilters();
+      MapView.refreshColors(); UI.updateScorebar();
+      UI.toast("Progress imported.", "good");
+    } catch (e) { UI.toast("Invalid backup file.", "bad"); }
+  };
+  reader.readAsText(file);
+};
+
+boot();
+</script>
+</body>
+</html>
