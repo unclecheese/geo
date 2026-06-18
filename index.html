@@ -938,6 +938,9 @@ const MapView = {
     this.svg.call(this.zoom).on("dblclick.zoom", null); // we handle dblclick ourselves
 
     this.svg.on("dblclick", (ev) => {
+      // A double-click is a zoom gesture, not an answer: cancel any pending
+      // single-click selection scheduled by the first click before zooming.
+      this._cancelPendingSelect();
       const [mx, my] = d3.pointer(ev);
       this.zoomToPoint(mx, my, 4);
     });
@@ -962,7 +965,7 @@ const MapView = {
       .on("click", function (ev, d) {
         ev.stopPropagation();
         const c = DataLayer.byCcn3.get(DataLayer.pad3(d.id));
-        if (c && self.onSelect) self.onSelect(c);
+        if (c) self._scheduleSelect(c);
       });
 
     // markers for tiny sovereign countries
@@ -987,7 +990,7 @@ const MapView = {
         });
       grp.append("circle").attr("class", "marker").attr("r", 2.4);
       grp.append("circle").attr("class", "marker-hit").attr("r", 9)
-        .on("click", (ev, d) => { ev.stopPropagation(); if (self.onSelect) self.onSelect(d); });
+        .on("click", (ev, d) => { ev.stopPropagation(); self._scheduleSelect(d); });
       return grp;
     });
 
@@ -1018,6 +1021,20 @@ const MapView = {
   setLabelsAllowed(_allowed) {
     // Country names are never shown on the map in any mode or zoom level.
     this.gLabels.attr("opacity", 0);
+  },
+
+  // Selection is debounced so a double-click (zoom gesture) never registers as
+  // an answer: the first click schedules the select, the dblclick cancels it.
+  SELECT_DELAY: 240,
+  _scheduleSelect(country) {
+    this._cancelPendingSelect();
+    this._pendingSelect = setTimeout(() => {
+      this._pendingSelect = null;
+      if (this.onSelect) this.onSelect(country);
+    }, this.SELECT_DELAY);
+  },
+  _cancelPendingSelect() {
+    if (this._pendingSelect) { clearTimeout(this._pendingSelect); this._pendingSelect = null; }
   },
 
   // Highlight helpers for quiz feedback / targets.
