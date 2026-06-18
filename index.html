@@ -931,10 +931,9 @@ const MapView = {
       .translateExtent([[0, 0], [this.width, this.height]])
       .on("zoom", (ev) => {
         this.g.attr("transform", ev.transform);
-        // keep markers/labels readable
+        // keep markers readable at any zoom (country names are never shown on the map)
         this.gMarkers.selectAll("circle.marker").attr("r", 2.4 / Math.sqrt(ev.transform.k));
         this.gCountries.selectAll("path").attr("stroke-width", 0.3 / ev.transform.k);
-        this.gLabels.attr("opacity", ev.transform.k > 2.4 ? 1 : 0);
       });
     this.svg.call(this.zoom).on("dblclick.zoom", null); // we handle dblclick ourselves
 
@@ -992,13 +991,9 @@ const MapView = {
       return grp;
     });
 
-    // labels (hidden by default; shown when zoomed and not in a hide-name mode)
-    this.gLabels.selectAll("text.label")
-      .data(DataLayer.countries.filter(c => c.centroid), d => d.id)
-      .join("text").attr("class", "label")
-      .attr("x", d => { const p = proj(d.centroid); return p ? p[0] : -99; })
-      .attr("y", d => { const p = proj(d.centroid); return p ? p[1] : -99; })
-      .text(d => d.name);
+    // Country names are intentionally never rendered on the map — keep the labels
+    // layer empty and hidden so a name can never leak (e.g. on zoom).
+    this.gLabels.selectAll("text.label").remove();
     this.gLabels.attr("opacity", 0);
   },
 
@@ -1020,10 +1015,9 @@ const MapView = {
       .attr("fill", d => this._fillFor(d));
   },
 
-  setLabelsAllowed(allowed) {
-    this._labelsAllowed = allowed;
-    const k = d3.zoomTransform(this.svg.node()).k;
-    this.gLabels.attr("opacity", allowed && k > 2.4 ? 1 : 0);
+  setLabelsAllowed(_allowed) {
+    // Country names are never shown on the map in any mode or zoom level.
+    this.gLabels.attr("opacity", 0);
   },
 
   // Highlight helpers for quiz feedback / targets.
