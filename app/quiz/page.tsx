@@ -57,7 +57,7 @@ export default function QuizPage() {
 
   const backToMenu = () => {
     quit();
-    router.push("/");
+    router.push("/", { scroll: false });
   };
 
   const progressText = session

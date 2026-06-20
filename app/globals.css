@@ -455,3 +455,13 @@ svg.spark { width: 100%; height: 70px; display: block; }
   opacity: 0; pointer-events: none; transition: opacity .25s ease;
 }
 #build-done-back.show { opacity: 1; pointer-events: auto; }
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

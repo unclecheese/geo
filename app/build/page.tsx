@@ -56,7 +56,7 @@ export default function BuildPage() {
 
   const backToMenu = () => {
     quit();
-    router.push("/");
+    router.push("/", { scroll: false });
   };
 
   const toggleSound = () => {

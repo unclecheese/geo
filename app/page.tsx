@@ -82,9 +82,9 @@ export default function MenuPage() {
     const modes = Logic.sanitizeModes(settings.modes);
     if (modes.join() !== settings.modes.join()) setSettings({ modes });
     const grp = MODES[modes[0]].group;
-    if (grp === "expert") router.push("/quiz");
-    else if (grp === "map") router.push("/map");
-    else router.push("/build");
+    if (grp === "expert") router.push("/quiz", { scroll: false });
+    else if (grp === "map") router.push("/map", { scroll: false });
+    else router.push("/build", { scroll: false });
   };
 
   const doExport = () => {

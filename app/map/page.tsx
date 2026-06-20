@@ -77,7 +77,7 @@ export default function MapPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [answered, reveal, next]);
 
-  const backToMenu = () => { quit(); router.push("/"); };
+  const backToMenu = () => { quit(); router.push("/", { scroll: false }); };
 
   const toggleHeatmap = () => {
     const on = !settings.heatmap;

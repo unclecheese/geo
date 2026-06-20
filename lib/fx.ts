@@ -119,6 +119,9 @@ export const Confetti = {
   },
   burst(x?: number, y?: number, count = 90) {
     if (!this.canvas || !this.ctx) return;
+    // Respect a reduced-motion preference — skip the celebration animation.
+    if (typeof window !== "undefined" &&
+        window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     const cols = ["#6ee7ff", "#a78bfa", "#fb7185", "#34d399", "#fbbf24"];
     const px = (x == null ? this.canvas.clientWidth / 2 : x) * devicePixelRatio;
     const py = (y == null ? this.canvas.clientHeight / 2 : y) * devicePixelRatio;
