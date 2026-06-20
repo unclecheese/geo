@@ -330,6 +330,36 @@ svg.spark { width: 100%; height: 70px; display: block; }
 .load-card h2 { margin: 0 0 6px; font-size: 22px; }
 .load-card p { color: var(--ink-dim); font-size: 14px; margin: 0; }
 
+/* ---------- Map screen ---------- */
+#map-wrap { position: fixed; inset: 0; }
+#map { width: 100%; height: 100%; display: block; cursor: grab; }
+#map.dragging { cursor: grabbing; }
+
+/* country paths */
+.country { stroke: var(--map-sea); stroke-width: .3px; cursor: pointer; transition: fill .25s ease; }
+.country:hover { stroke: var(--accent); stroke-width: .9px; }
+.country.selectable-hover:hover { filter: drop-shadow(0 0 6px rgba(110,231,255,.8)); }
+
+/* tiny-country markers */
+.marker { fill: var(--accent-2); stroke: #fff; stroke-width: .5px; pointer-events: none; }
+.marker-hit { fill: transparent; cursor: pointer; }
+
+/* highlight classes applied by MapView.paint() */
+.hl-good   { fill: #34d399 !important; stroke: #fff !important; stroke-opacity: .9 !important; }
+.hl-bad    { fill: #f87171 !important; stroke: #fff !important; stroke-opacity: .9 !important; }
+.hl-target { fill: #fbbf24 !important; stroke: #fff !important; stroke-opacity: .9 !important; }
+
+/* ---------- Quiz HUD (map screen) ---------- */
+#hud {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+  z-index: 28; width: min(560px, calc(100% - 60px));
+  background: var(--panel); backdrop-filter: blur(16px);
+  border: 1px solid var(--stroke); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 16px 18px;
+  transition: opacity .25s, transform .25s;
+}
+#hud.hidden { opacity: 0; transform: translateX(-50%) translateY(20px); pointer-events: none; }
+
 @media (max-width: 720px) {
   .choices { grid-template-columns: 1fr; }
   .border-grid { grid-template-columns: 1fr; }
