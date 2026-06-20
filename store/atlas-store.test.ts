@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { defaultState, migrateState } from "@/store/atlas-store";
+import { describe, it, expect, beforeEach } from "vitest";
+import { defaultState, migrateState, useAtlasStore } from "@/store/atlas-store";
 
 describe("defaultState", () => {
   it("is a fresh version-2 state with map modes", () => {
@@ -59,5 +59,48 @@ describe("migrateState", () => {
     expect(m.settings.showNames).toBe(false);
     expect(m.stats.answered).toBe(3);
     expect(m.leitner["392:capital"].box).toBe(2);
+  });
+});
+
+describe("store actions", () => {
+  beforeEach(() => useAtlasStore.getState().resetProgress());
+
+  it("recordVerdict folds an outcome into leitner, history, and stats", () => {
+    useAtlasStore.getState().recordVerdict({
+      id: "840",
+      mode: "capital",
+      correct: true,
+      ms: 1200,
+      region: "Americas",
+    });
+    const s = useAtlasStore.getState();
+    expect(s.stats.answered).toBe(1);
+    expect(s.stats.correct).toBe(1);
+    expect(s.history).toHaveLength(1);
+    expect(s.leitner["840:capital"].box).toBe(2);
+  });
+
+  it("recordVerdict pushes the session streak onto streakHistory when given", () => {
+    const rv = useAtlasStore.getState().recordVerdict;
+    rv({ id: "840", mode: "capital", correct: true, ms: 100, region: "Americas", streak: 1 });
+    rv({ id: "124", mode: "capital", correct: true, ms: 100, region: "Americas", streak: 2 });
+    expect(useAtlasStore.getState().stats.streakHistory).toEqual([1, 2]);
+  });
+
+  it("recordVerdict leaves streakHistory untouched when streak is omitted", () => {
+    useAtlasStore
+      .getState()
+      .recordVerdict({ id: "840", mode: "capital", correct: false, ms: 100, region: "Americas" });
+    expect(useAtlasStore.getState().stats.streakHistory).toEqual([]);
+  });
+
+  it("recordBestStreak only ratchets upward", () => {
+    const rbs = useAtlasStore.getState().recordBestStreak;
+    rbs(3);
+    expect(useAtlasStore.getState().stats.bestStreak).toBe(3);
+    rbs(2);
+    expect(useAtlasStore.getState().stats.bestStreak).toBe(3);
+    rbs(7);
+    expect(useAtlasStore.getState().stats.bestStreak).toBe(7);
   });
 });

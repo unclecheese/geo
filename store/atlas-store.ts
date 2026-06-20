@@ -77,6 +77,9 @@ interface VerdictInput {
   correct: boolean;
   ms: number;
   region: string;
+  // Post-grade session streak, pushed onto the (capped) streak history for the
+  // dashboard sparkline. Optional so non-quiz callers (Build) can omit it.
+  streak?: number;
 }
 
 export interface AtlasStore extends AtlasState {
@@ -84,6 +87,7 @@ export interface AtlasStore extends AtlasState {
   setHasHydrated: (v: boolean) => void;
   setSettings: (patch: Partial<Settings>) => void;
   recordVerdict: (v: VerdictInput) => void;
+  recordBestStreak: (n: number) => void;
   resetProgress: () => void;
   importState: (json: string | object) => void;
   exportState: () => string;
@@ -101,12 +105,15 @@ export const useAtlasStore = create<AtlasStore>()(
 
       // Fold one outcome into Leitner + history + stats under "id:mode" — the
       // shared core of the old Quiz grading and Build._recordVerdict.
-      recordVerdict: ({ id, mode, correct, ms, region }) =>
+      recordVerdict: ({ id, mode, correct, ms, region, streak }) =>
         set((s) => {
           const key = id + ":" + mode;
           const entry: HistoryEntry = { id, mode, correct, ms, region, t: Date.now() };
           const history = s.history.concat(entry);
           if (history.length > 1000) history.splice(0, history.length - 1000);
+          const streakHistory =
+            streak == null ? s.stats.streakHistory : s.stats.streakHistory.concat(streak);
+          if (streakHistory.length > 200) streakHistory.splice(0, streakHistory.length - 200);
           return {
             leitner: { ...s.leitner, [key]: Logic.leitnerUpdate(s.leitner[key], correct) },
             history,
@@ -114,9 +121,15 @@ export const useAtlasStore = create<AtlasStore>()(
               ...s.stats,
               answered: s.stats.answered + 1,
               correct: s.stats.correct + (correct ? 1 : 0),
+              streakHistory,
             },
           };
         }),
+
+      // bestStreak lives in stats but is driven by the live session streak, which
+      // recordVerdict has no knowledge of — the quiz store reports it separately.
+      recordBestStreak: (n) =>
+        set((s) => ({ stats: { ...s.stats, bestStreak: Math.max(s.stats.bestStreak, n) } })),
 
       resetProgress: () => set({ ...defaultState() }),
 
