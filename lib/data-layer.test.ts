@@ -1,0 +1,63 @@
+import { describe, it, expect } from "vitest";
+import { DataLayer } from "@/lib/data-layer";
+
+// A tiny but valid TopoJSON: two square countries (ids 4 and 76). Country 586
+// (Pakistan) deliberately has NO geometry, to exercise the feature-less path.
+const topo = {
+  type: "Topology",
+  arcs: [
+    [[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]],
+    [[20, 0], [20, 10], [30, 10], [30, 0], [20, 0]],
+  ],
+  objects: {
+    countries: {
+      type: "GeometryCollection",
+      geometries: [
+        { type: "Polygon", id: 4, arcs: [[0]] },
+        { type: "Polygon", id: 76, arcs: [[1]] },
+      ],
+    },
+  },
+} as unknown as Parameters<typeof DataLayer._hydrate>[0];
+
+const meta = [
+  { ccn3: "004", cca2: "AF", cca3: "AFG", name: { common: "Afghanistan" }, capital: ["Kabul"], region: "Asia", subregion: "Southern Asia", unMember: true, borders: ["PAK"], latlng: [33, 66] as [number, number] },
+  { ccn3: "586", cca2: "PK", cca3: "PAK", name: { common: "Pakistan" }, capital: ["Islamabad"], region: "Asia", unMember: true, borders: ["AFG"], latlng: [30, 70] as [number, number] },
+  { ccn3: "076", cca2: "BR", cca3: "BRA", name: { common: "Brazil" }, capital: ["Brasília"], region: "Americas", unMember: true, borders: [] },
+  { ccn3: "010", cca2: "AQ", cca3: "ATA", name: { common: "Antarctica" }, region: "Antarctic", unMember: false, independent: false },
+];
+
+describe("DataLayer._hydrate", () => {
+  DataLayer._hydrate(topo, meta);
+  const byCca3 = (code: string) => DataLayer.countries.find((c) => c.cca3 === code);
+
+  it("keeps only sovereign countries", () => {
+    expect(DataLayer.countries).toHaveLength(3); // AFG, PAK, BRA — Antarctica excluded
+    expect(byCca3("ATA")).toBeUndefined();
+  });
+
+  it("joins geometry by padded ccn3, leaving feature-less countries null", () => {
+    expect(byCca3("AFG")!.feature).toBeTruthy(); // id 4 -> "004"
+    expect(byCca3("BRA")!.feature).toBeTruthy(); // id 76 -> "076"
+    expect(byCca3("PAK")!.feature).toBeNull(); // 586 not in the topology
+  });
+
+  it("resolves land borders into neighbour objects", () => {
+    expect(byCca3("AFG")!.neighbours.map((n) => n.cca3)).toEqual(["PAK"]);
+    expect(byCca3("PAK")!.neighbours.map((n) => n.cca3)).toEqual(["AFG"]);
+    expect(byCca3("BRA")!.neighbours).toEqual([]);
+  });
+
+  it("derives a centroid for countries with geometry, falling back to latlng", () => {
+    expect(byCca3("AFG")!.centroid).not.toBeNull();
+    // PAK has no feature, so its centroid falls back to [lng, lat] from latlng.
+    expect(byCca3("PAK")!.centroid).toEqual([70, 30]);
+  });
+
+  it("retains the raw topology and indexes features by padded ccn3", () => {
+    expect(DataLayer.topo).toBe(topo);
+    expect(DataLayer.featureById.has("004")).toBe(true);
+    expect(DataLayer.featureById.has("076")).toBe(true);
+    expect(DataLayer.pad3(4)).toBe("004");
+  });
+});
