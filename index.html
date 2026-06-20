@@ -78,28 +78,27 @@
     font-variant-numeric: tabular-nums; }
   .bb-timer[hidden] { display: none; }
 
-  /* bank tray of draggable country tiles */
+  /* bank of draggable country tiles — a scrolling panel down the right edge */
   #build-bank {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-    /* Two rows that flow into columns, so 40+ tiles stay compact and only need
-       half the horizontal scrolling of a single row. */
-    display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 1fr);
-    grid-auto-columns: max-content; gap: 8px; align-content: end;
-    padding: 10px 14px 12px; height: 168px;
-    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
-    background: linear-gradient(to top, rgba(7, 11, 24, .94), rgba(7, 11, 24, .6) 78%, transparent);
+    position: fixed; top: 56px; right: 0; bottom: 0; z-index: 30;
+    width: 236px;
+    /* Two columns of large tiles, scrolling vertically. */
+    display: grid; grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: max-content; gap: 10px; align-content: start;
+    padding: 6px 14px 18px; overflow-y: auto; overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    background: linear-gradient(to left, rgba(7, 11, 24, .94), rgba(7, 11, 24, .6) 82%, transparent);
   }
   #build-bank:empty { display: none; }
   .build-tile {
-    width: 68px; height: 70px; border-radius: 11px;
+    position: relative; width: 100%; border-radius: 12px;
     border: 1px solid var(--stroke); background: var(--panel); color: var(--ink);
     display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
-    padding: 5px 4px 4px; cursor: grab; touch-action: none; user-select: none;
+    padding: 8px 6px 6px; cursor: grab; touch-action: none; user-select: none;
     transition: transform .12s ease, border-color .12s ease;
   }
   .build-tile:hover { border-color: rgba(255, 255, 255, .18); transform: translateY(-2px); }
   .build-tile:active { cursor: grabbing; }
-  .build-tile { position: relative; }
   .tile-hint {
     position: absolute; top: 3px; right: 3px; width: 17px; height: 17px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;
@@ -107,9 +106,9 @@
     line-height: 1; z-index: 2;
   }
   .tile-hint:hover { color: var(--warn); border-color: var(--warn); background: rgba(251, 191, 36, .12); }
-  .build-tile svg { width: 46px; height: 36px; display: block; pointer-events: none; }
-  .build-tile .tname { font-size: 9px; line-height: 1.1; text-align: center;
-    color: var(--ink-dim); margin-top: 2px; max-width: 62px; overflow: hidden;
+  .build-tile svg { width: 100%; height: auto; display: block; pointer-events: none; }
+  .build-tile .tname { font-size: 11px; line-height: 1.15; text-align: center;
+    color: var(--ink-dim); margin-top: 5px; max-width: 100%; overflow: hidden;
     white-space: nowrap; text-overflow: ellipsis; }
   .build-tile.dragging { opacity: .3; }
   .build-tile.reject { animation: tile-shake .42s ease; border-color: var(--bad); }
@@ -126,8 +125,8 @@
 
   /* name-for-credit prompt (unnamed mode) */
   #build-name {
-    position: fixed; left: 50%; transform: translateX(-50%); bottom: 182px; z-index: 31;
-    width: min(420px, calc(100% - 32px));
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 28px; z-index: 31;
+    width: min(420px, calc(100% - 280px));
     background: var(--panel-solid); border: 1px solid var(--stroke); border-radius: var(--radius);
     padding: 14px 16px; box-shadow: var(--shadow);
   }
@@ -590,7 +589,7 @@
 
   <div id="build-banner">
     <div class="bb-title" id="build-title">Build a continent</div>
-    <div class="bb-sub" id="build-sub">Build outward from the seed</div>
+    <div class="bb-sub" id="build-sub">Drag each country onto the map</div>
     <div class="bb-timer" id="build-timer" hidden></div>
   </div>
 
@@ -911,19 +910,9 @@ const Logic = {
    central-seed candidates. Exposed on window.GEO for testing.
    ------------------------------------------------------------------- */
 const BuildGraph = {
-  // Continents with a connected internal land-border mainland. Oceania has
-  // no such graph (its members are islands) so it is unsupported in v1.
-  SUPPORTED: ["Africa", "Asia", "Europe", "Americas"],
-
-  // Reasonably central, well-known seed candidates per continent (cca3).
-  // Intersected with the placeable set at build time; if none survive we
-  // fall back to the most-connected countries in the mainland component.
-  SEED_CCA3: {
-    Africa:   ["TCD", "NGA", "COD", "SDN", "CAF", "CMR", "NER", "ETH", "KEN", "TZA"],
-    Asia:     ["CHN", "KAZ", "IND", "IRN", "AFG", "UZB", "MNG", "PAK", "TKM"],
-    Europe:   ["DEU", "POL", "AUT", "CZE", "HUN", "CHE", "SVK", "FRA", "SRB"],
-    Americas: ["BRA", "BOL", "COL", "PER", "USA", "MEX", "ARG", "PRY"]
-  },
+  // Continents you can assemble. Placement no longer requires a country to
+  // touch the map, so island continents (Oceania) and isolated nations work too.
+  SUPPORTED: ["Africa", "Asia", "Europe", "Americas", "Oceania"],
 
   // Same-continent land-border adjacency as id -> Set(id). Only edges where
   // both endpoints sit in the chosen continent are kept.
@@ -962,28 +951,16 @@ const BuildGraph = {
     return comps;
   },
 
-  // Full build model for a continent: the adjacency, the placeable mainland
-  // (largest component), the excluded islands, and the seed candidates.
+  // Full build model for a continent: the adjacency (used as a snap bonus when
+  // a piece is dropped against a neighbour already on the map) and the placeable
+  // set — every country in the continent that has a polygon to render. Islands
+  // and otherwise-disconnected nations are included; they snap by position.
   build(countries, continent) {
     const adj = this.adjacency(countries, continent);
     const supported = this.SUPPORTED.includes(continent);
-    const comps = this.components(countries, continent);
-    const mainland = comps[0] || [];
-    // Buildable only if we support the continent and its mainland has enough
-    // connected countries to actually assemble outward from a seed.
-    const buildable = supported && mainland.length >= 3;
-    const placeable = buildable ? mainland : [];
-    const placeableIds = new Set(placeable.map(c => c.id));
-    const islands = countries.filter(c => c.region === continent && !placeableIds.has(c.id));
-    // Seed candidates: curated central set ∩ placeable; else most-connected.
-    const wanted = new Set(this.SEED_CCA3[continent] || []);
-    let seedCandidates = placeable.filter(c => wanted.has(c.cca3));
-    if (!seedCandidates.length && placeable.length) {
-      seedCandidates = placeable.slice()
-        .sort((a, b) => (adj.get(b.id)?.size || 0) - (adj.get(a.id)?.size || 0))
-        .slice(0, Math.min(6, placeable.length));
-    }
-    return { continent, supported, buildable, adjacency: adj, placeable, islands, seedCandidates };
+    const placeable = supported ? countries.filter(c => c.region === continent && c.feature) : [];
+    const buildable = supported && placeable.length >= 3;
+    return { continent, supported, buildable, adjacency: adj, placeable, islands: [] };
   },
 
   // Unlock predicate: a not-yet-placed country can be placed now only if it
@@ -1072,15 +1049,14 @@ const Placement = {
     return min;
   },
 
-  // Decide a drop. Adjacency is a precondition (a locked country never snaps).
-  // Snap when the piece's centroid is within the fallback radius of its true
-  // centroid, OR when its edges come within the border-gap of a placed
-  // neighbour. On success the snap target is the true position.
-  // Returns { ok, snapTo, reason } where reason ∈ locked|centroid|border|far.
+  // Decide a drop on position alone — any country can be placed, neighbour or
+  // not. Snap when the piece's centroid is within the fallback radius of its
+  // true centroid, OR when its edges come within the border-gap of a country
+  // already on the map. On success the snap target is the true position.
+  // Returns { ok, snapTo, reason } where reason ∈ centroid|border|far.
   validate(opts) {
-    const { isAdjacent, dropCentroid, trueCentroid, pieceRings,
+    const { dropCentroid, trueCentroid, pieceRings,
             neighbourRings, borderGap, centroidRadius } = opts;
-    if (!isAdjacent) return { ok: false, snapTo: null, reason: "locked" };
     if (this._dist(dropCentroid, trueCentroid) <= centroidRadius) {
       return { ok: true, snapTo: trueCentroid, reason: "centroid" };
     }
@@ -1305,7 +1281,35 @@ const Audio2 = {
   },
   correct() { this.blip([523, 784], 0.16, "triangle"); },
   wrong()   { this.blip([220, 160], 0.2, "sawtooth"); },
-  milestone(){ this.blip([523, 659, 784, 1046], 0.18, "triangle"); }
+  milestone(){ this.blip([523, 659, 784, 1046], 0.18, "triangle"); },
+
+  // A tactile "clunk" for a piece snapping home: a short pitch-dropping body
+  // plus a crisp high tick layered on top.
+  place() {
+    if (!State.data.settings.sound) return;
+    this.ensure();
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    const body = this.ctx.createOscillator(), bg = this.ctx.createGain();
+    body.type = "sine";
+    body.frequency.setValueAtTime(440, t0);
+    body.frequency.exponentialRampToValueAtTime(150, t0 + 0.08);
+    bg.gain.setValueAtTime(0.0001, t0);
+    bg.gain.exponentialRampToValueAtTime(0.32, t0 + 0.005);
+    bg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.13);
+    body.connect(bg).connect(this.ctx.destination);
+    body.start(t0); body.stop(t0 + 0.15);
+    const tick = this.ctx.createOscillator(), tg = this.ctx.createGain();
+    tick.type = "triangle"; tick.frequency.value = 1180;
+    tg.gain.setValueAtTime(0.0001, t0);
+    tg.gain.exponentialRampToValueAtTime(0.12, t0 + 0.004);
+    tg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.05);
+    tick.connect(tg).connect(this.ctx.destination);
+    tick.start(t0); tick.stop(t0 + 0.06);
+  },
+
+  // A low, blunt buzz for a piece dropped in the wrong place.
+  misplace() { this.blip([180, 120], 0.22, "square"); }
 };
 
 /* ---------------------------------------------------------------------
@@ -1685,11 +1689,17 @@ const BuildView = {
     const memberGeoms = geoms.filter(g => placeableCcn3.has(DataLayer.pad3(g.id)));
     const merged = topojson.merge(topo, memberGeoms);
 
+    // Frame to the countries' main landmasses (display features), so far-flung
+    // islands like Hawaii or the Aleutians don't shrink the whole continent.
+    const displayColl = { type: "FeatureCollection",
+      features: this.model.graph.placeable.filter(c => c.feature).map(c => this._displayFeature(c)) };
+
     this.projection = d3.geoEqualEarth()
-      .fitExtent([[30, 30], [this.width - 30, this.height - 188]], merged);
+      .fitExtent([[30, 30], [Math.max(160, this.width - 268), this.height - 30]], displayColl);
     this.path = d3.geoPath(this.projection);
 
-    const b = this.path.bounds(merged);
+    const b = this.path.bounds(displayColl);
+    this.fieldBounds = b; // projection space; used to tell a miss from a cancel
     this.extent = Math.hypot(b[1][0] - b[0][0], b[1][1] - b[0][1]);
     this.centroidRadius = 0.05 * this.extent; // forgiving floor (~5% of extent)
     this.borderGap = 0.02 * this.extent;
@@ -1698,6 +1708,37 @@ const BuildView = {
       .attr("class", "build-silhouette").attr("d", this.path);
 
     this._redrawPlaced();
+  },
+
+  // The displayed shape of a country: its main landmass(es) only. Drops polygons
+  // smaller than ~18% of the largest, so distant minor islands don't make a
+  // country render as a sprawl-with-a-dot (e.g. USA + Hawaii). Cached per country.
+  _displayFeature(country) {
+    if (country._display) return country._display;
+    const f = country.feature;
+    const g = f && f.geometry;
+    if (!g || g.type !== "MultiPolygon" || g.coordinates.length <= 1) {
+      country._display = f;
+      return f;
+    }
+    const areas = g.coordinates.map(poly => d3.geoArea({ type: "Polygon", coordinates: poly }));
+    const max = Math.max.apply(null, areas);
+    const kept = g.coordinates.filter((_, i) => areas[i] >= 0.18 * max);
+    country._display = { type: "Feature", properties: f.properties,
+      geometry: { type: "MultiPolygon", coordinates: kept } };
+    return country._display;
+  },
+
+  // A stable, vivid colour per country (hashed from its id) so each tile matches
+  // its placed shape and the finished continent reads as a tapestry.
+  _colour(country) {
+    const id = String(country.id);
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    const hue = h % 360;
+    const sat = 55 + (h >> 9) % 22;   // 55–76%
+    const lig = 52 + (h >> 13) % 13;  // 52–64%
+    return `hsl(${hue} ${sat}% ${lig}%)`;
   },
 
   // Project a feature's coordinates into [x,y] pixel rings (outer + holes
@@ -1719,18 +1760,18 @@ const BuildView = {
 
   _redrawPlaced() {
     const placed = this._placedFeatures();
-    const seedId = this.model.seed.id;
+    const seedId = this.model.seed ? this.model.seed.id : null;
     this.gPlaced.selectAll("path").data(placed, d => d.id).join("path")
       .attr("class", d => d.id === seedId ? "build-seed" : "build-placed")
-      .attr("d", d => this.path(d.feature));
-    // The seed is always labelled as the orientation anchor; in unnamed mode
-    // wrong-named / hinted countries are revealed with their label too.
+      .style("fill", d => d.id === seedId ? null : this._colour(d))
+      .attr("d", d => this.path(this._displayFeature(d)));
+    // In unnamed mode, wrong-named / hinted countries are revealed with a label.
     const revealed = this.model.revealedIds || new Set();
     const labelled = placed.filter(c => c.id === seedId || revealed.has(c.id));
     this.gLabels.selectAll("text").data(labelled, d => d.id).join("text")
       .attr("class", "build-seed-label")
-      .attr("x", d => this.path.centroid(d.feature)[0])
-      .attr("y", d => this.path.centroid(d.feature)[1] + 4)
+      .attr("x", d => this.path.centroid(this._displayFeature(d))[0])
+      .attr("y", d => this.path.centroid(this._displayFeature(d))[1] + 4)
       .text(d => d.name);
     this._applyZoomScale();
   },
@@ -1756,7 +1797,13 @@ const BuildView = {
     host.innerHTML = "";
     const remaining = this.model.graph.placeable
       .filter(c => !this.model.placedIds.has(c.id) && c.feature);
-    Logic._shuffle(remaining.slice()).forEach(c => host.appendChild(this._makeTile(c)));
+    // Labels on → alphabetical so you can find a country fast; labels off →
+    // shuffled so the order isn't a hint.
+    const named = State.data.settings.showNames !== false;
+    const ordered = named
+      ? remaining.slice().sort((a, b) => a.name.localeCompare(b.name))
+      : Logic._shuffle(remaining.slice());
+    ordered.forEach(c => host.appendChild(this._makeTile(c)));
     this._updateBanner();
   },
 
@@ -1782,12 +1829,13 @@ const BuildView = {
     return tile;
   },
 
-  // A normalised, uniformly-sized silhouette of the country for the tile.
+  // A normalised, uniformly-sized silhouette of the country for the tile —
+  // its main landmass only, tinted with the country's tapestry colour.
   _tileSVG(country) {
-    const f = country.feature;
+    const f = this._displayFeature(country);
     const proj = d3.geoMercator().fitExtent([[5, 5], [53, 49]], f);
     const path = d3.geoPath(proj);
-    return `<svg viewBox="0 0 58 54" aria-hidden="true"><path class="build-tile-shape" d="${path(f)}"/></svg>`;
+    return `<svg viewBox="0 0 58 54" aria-hidden="true"><path class="build-tile-shape" style="fill:${this._colour(country)}" d="${path(f)}"/></svg>`;
   },
 
   /* --- drag layer (pointer events: mouse + touch) --- */
@@ -1802,10 +1850,12 @@ const BuildView = {
   _startDrag(ev, country, tile) {
     if (!country.feature || this.drag || Build.naming) return;
     ev.preventDefault();
-    const trueCentroid = this.path.centroid(country.feature);
+    const disp = this._displayFeature(country);
+    const trueCentroid = this.path.centroid(disp);
     // The floating piece is the country at true canvas scale.
     const el = this.gDrag.append("path").attr("class", "build-drag-piece")
-      .attr("d", this.path(country.feature));
+      .style("fill", this._colour(country))
+      .attr("d", this.path(disp));
     this.drag = { country, tile, trueCentroid, el };
     tile.classList.add("dragging");
     this._moveDrag(ev);
@@ -1831,42 +1881,64 @@ const BuildView = {
     this.drag = null;
     tile.classList.remove("dragging");
     const [x, y] = this._localPoint(ev); // drop position in projection space
+    const disp = this._displayFeature(country);
     const dx = x - trueCentroid[0], dy = y - trueCentroid[1];
     const placedNeighbours = country.neighbours
       .filter(n => this.model.placedIds.has(n.id) && n.feature);
     const result = Placement.validate({
-      isAdjacent: BuildGraph.isUnlocked(country, this.model.placedIds, this.model.graph.adjacency),
       dropCentroid: [x, y],
       trueCentroid,
-      pieceRings: this._projectRings(country.feature, dx, dy),
-      neighbourRings: placedNeighbours.map(n => this._projectRings(n.feature)),
+      pieceRings: this._projectRings(disp, dx, dy),
+      neighbourRings: placedNeighbours.map(n => this._projectRings(this._displayFeature(n))),
       borderGap: this.borderGap,
       centroidRadius: this.centroidRadius
     });
-    if (result.ok) { el.remove(); this._place(country, tile); }
-    else this._reject(tile, trueCentroid, el, result.reason);
+    if (result.ok) { el.remove(); this._place(country, tile); return; }
+    // Missed. A drop inside the continent is a genuine wrong placement; a drop
+    // outside its borders (or back over the bank) is just a change of mind.
+    if (this._inField([x, y])) this._reject(tile, trueCentroid, el);
+    else this._cancelReturn(tile, trueCentroid, el);
   },
 
-  // A rejected drop bounces the piece back to its bank tile and explains why.
-  // "locked" → not yet adjacent to anything placed; "far" → right country,
-  // wrong place. Either way the tile stays in the bank for a retry.
-  _reject(tile, trueCentroid, el, reason) {
+  // Is a projection-space point within the continent's playing field (its
+  // bounding box, eased out by the snap radius)? Used to separate a wrong
+  // placement from an abandoned drag.
+  _inField(p) {
+    const b = this.fieldBounds;
+    if (!b) return true;
+    const m = this.centroidRadius || 0;
+    return p[0] >= b[0][0] - m && p[0] <= b[1][0] + m
+        && p[1] >= b[0][1] - m && p[1] <= b[1][1] + m;
+  },
+
+  // The bounce-back animation shared by a wrong drop and an abandoned one.
+  _returnPiece(tile, trueCentroid, el, ms) {
     const r = tile.getBoundingClientRect();
     const wrap = document.getElementById("build-wrap").getBoundingClientRect();
     // Tile centre → projection space, so the bounce lands on it at any zoom.
     const [tx, ty] = this.transform.invert([(r.left + r.width / 2) - wrap.left, (r.top + r.height / 2) - wrap.top]);
-    el.transition().duration(360).ease(d3.easeCubicOut)
+    el.transition().duration(ms).ease(d3.easeCubicOut)
       .attr("transform", `translate(${tx - trueCentroid[0]},${ty - trueCentroid[1]})`)
       .style("opacity", 0)
       .remove();
+  },
+
+  // A wrong placement: bounce back, shake the tile, buzz, and count a mistake.
+  _reject(tile, trueCentroid, el) {
+    this._returnPiece(tile, trueCentroid, el, 360);
     tile.classList.remove("reject");
     void tile.offsetWidth; // restart the shake animation
     tile.classList.add("reject");
     setTimeout(() => tile.classList.remove("reject"), 450);
-    UI.toast(reason === "locked"
-      ? "It must touch a country already on the map"
-      : "Not quite there — try again", "bad");
-    Build.afterMistake(reason);
+    UI.toast("Not quite there — try again", "bad");
+    Audio2.misplace();
+    Build.afterMistake();
+  },
+
+  // An abandoned drag (dropped outside the continent or over the bank): return
+  // the piece quietly — no shake, no buzz, no mistake.
+  _cancelReturn(tile, trueCentroid, el) {
+    this._returnPiece(tile, trueCentroid, el, 280);
   },
 
   // Lock a correctly-placed country to its true coordinates.
@@ -1875,6 +1947,7 @@ const BuildView = {
     tile.remove();
     this._redrawPlaced();
     this._updateBanner();
+    Audio2.place();
     Build.afterPlace(country);
   },
 
@@ -1924,9 +1997,8 @@ const Build = {
       UI.toast("That continent can't be built yet.", "bad");
       return;
     }
-    const seeds = graph.seedCandidates.length ? graph.seedCandidates : graph.placeable;
-    const seed = seeds[Math.floor(Math.random() * seeds.length)];
-    this.model = { continent, graph, seed, placedIds: new Set([seed.id]), revealedIds: new Set() };
+    // No seed: the map starts empty and any country can be placed on position.
+    this.model = { continent, graph, seed: null, placedIds: new Set(), revealedIds: new Set() };
     this.naming = false;
     // Scoring accumulator: the running fold of the placement event stream
     // (snaps + misdrops) into time and mistake totals.
@@ -1992,10 +2064,6 @@ const Build = {
   // signal), and the placed piece anchors its neighbours like any other.
   hint(country) {
     if (!this.active || this.model.placedIds.has(country.id)) return;
-    if (!BuildGraph.isUnlocked(country, this.model.placedIds, this.model.graph.adjacency)) {
-      UI.toast("That doesn't border the map yet", "bad");
-      return;
-    }
     this.model.placedIds.add(country.id);
     this.session.mistakes += 1;
     this._recordVerdict(country, false);
