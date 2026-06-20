@@ -41,17 +41,111 @@
   button { font-family: inherit; cursor: pointer; }
   ::selection { background: var(--accent-2); color: #0b1020; }
 
-  /* ---------- Layout ---------- */
-  #app { position: fixed; inset: 0; display: flex; }
-  #map-wrap { position: relative; flex: 1; min-width: 0; }
+  /* ---------- Screens ---------- */
+  .screen { position: fixed; inset: 0; display: none; }
+  .screen.active { display: block; }
+  #screen-menu.active { display: flex; flex-direction: column; align-items: center;
+    justify-content: flex-start; overflow: auto; padding: 48px 20px 64px; }
+  #screen-quiz.active { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+
+  #map-wrap { position: absolute; inset: 0; }
   #map { width: 100%; height: 100%; display: block; cursor: grab; }
   #map.dragging { cursor: grabbing; }
-  #fx-canvas { position: absolute; inset: 0; pointer-events: none; z-index: 40; }
+  #fx-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 45; }
+
+  /* ---------- Continent builder screen ---------- */
+  #build-wrap { position: absolute; inset: 0; }
+  #build-svg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+  #build-svg.grabbing { cursor: grabbing; }
+  /* Keep outlines crisp at any zoom — the world group is scaled, strokes aren't. */
+  .build-silhouette, .build-seed, .build-placed, .build-drag-piece, .build-seed-label {
+    vector-effect: non-scaling-stroke;
+  }
+  .build-silhouette { fill: rgba(120, 140, 210, .10); stroke: rgba(150, 170, 230, .42);
+    stroke-width: 1.2; stroke-dasharray: 5 5; stroke-linejoin: round; }
+  .build-seed { fill: rgba(167, 139, 250, .85); stroke: #fff; stroke-opacity: .9; stroke-width: .8; }
+  .build-seed-label { fill: var(--ink); font-size: 12px; font-weight: 800; text-anchor: middle;
+    paint-order: stroke; stroke: rgba(7, 11, 24, .9); stroke-width: 3.5px; stroke-linejoin: round; pointer-events: none; }
+  #build-banner {
+    position: fixed; left: 50%; transform: translateX(-50%); top: 14px; z-index: 30;
+    text-align: center; pointer-events: none; max-width: calc(100% - 160px);
+    background: var(--panel); border: 1px solid var(--stroke); border-radius: var(--radius-sm);
+    padding: 8px 18px; backdrop-filter: blur(8px); box-shadow: var(--shadow);
+  }
+  .bb-title { font-size: 15px; font-weight: 800; letter-spacing: .3px; }
+  .bb-sub { font-size: 12px; color: var(--ink-dim); margin-top: 2px; }
+  .bb-timer { font-size: 13px; font-weight: 700; color: var(--accent); margin-top: 3px;
+    font-variant-numeric: tabular-nums; }
+  .bb-timer[hidden] { display: none; }
+
+  /* bank tray of draggable country tiles */
+  #build-bank {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    /* Two rows that flow into columns, so 40+ tiles stay compact and only need
+       half the horizontal scrolling of a single row. */
+    display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 1fr);
+    grid-auto-columns: max-content; gap: 8px; align-content: end;
+    padding: 10px 14px 12px; height: 168px;
+    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
+    background: linear-gradient(to top, rgba(7, 11, 24, .94), rgba(7, 11, 24, .6) 78%, transparent);
+  }
+  #build-bank:empty { display: none; }
+  .build-tile {
+    width: 68px; height: 70px; border-radius: 11px;
+    border: 1px solid var(--stroke); background: var(--panel); color: var(--ink);
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding: 5px 4px 4px; cursor: grab; touch-action: none; user-select: none;
+    transition: transform .12s ease, border-color .12s ease;
+  }
+  .build-tile:hover { border-color: rgba(255, 255, 255, .18); transform: translateY(-2px); }
+  .build-tile:active { cursor: grabbing; }
+  .build-tile { position: relative; }
+  .tile-hint {
+    position: absolute; top: 3px; right: 3px; width: 17px; height: 17px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;
+    color: var(--ink-faint); background: rgba(255, 255, 255, .06); border: 1px solid var(--stroke);
+    line-height: 1; z-index: 2;
+  }
+  .tile-hint:hover { color: var(--warn); border-color: var(--warn); background: rgba(251, 191, 36, .12); }
+  .build-tile svg { width: 46px; height: 36px; display: block; pointer-events: none; }
+  .build-tile .tname { font-size: 9px; line-height: 1.1; text-align: center;
+    color: var(--ink-dim); margin-top: 2px; max-width: 62px; overflow: hidden;
+    white-space: nowrap; text-overflow: ellipsis; }
+  .build-tile.dragging { opacity: .3; }
+  .build-tile.reject { animation: tile-shake .42s ease; border-color: var(--bad); }
+  @keyframes tile-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); } 40% { transform: translateX(5px); }
+    60% { transform: translateX(-3px); } 80% { transform: translateX(3px); }
+  }
+  .build-tile-shape { fill: rgba(167, 139, 250, .9); stroke: #fff; stroke-opacity: .5; stroke-width: .4; }
+  .build-drag-piece { fill: rgba(167, 139, 250, .95); stroke: #fff; stroke-opacity: .95;
+    stroke-width: 1; pointer-events: none; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55)); }
+  .build-placed { fill: rgba(110, 231, 255, .5); stroke: rgba(255, 255, 255, .55); stroke-width: .5; }
+  .tname-hidden { color: var(--ink-faint); opacity: .5; }
+
+  /* name-for-credit prompt (unnamed mode) */
+  #build-name {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 182px; z-index: 31;
+    width: min(420px, calc(100% - 32px));
+    background: var(--panel-solid); border: 1px solid var(--stroke); border-radius: var(--radius);
+    padding: 14px 16px; box-shadow: var(--shadow);
+  }
+  #build-name[hidden] { display: none; }
+  .bn-prompt { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+  #build-name .ac-input { width: 100%; }
+
+  /* ---------- Screen top bar (map / expert) ---------- */
+  .screen-top {
+    position: fixed; top: 14px; left: 0; right: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; pointer-events: none;
+  }
+  .screen-top .st-left, .screen-top .st-right { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
 
   /* ---------- Brand ---------- */
   .brand {
-    position: absolute; top: 18px; left: 22px; z-index: 30;
-    display: flex; align-items: center; gap: 10px; pointer-events: none;
+    display: flex; align-items: center; gap: 10px;
     text-shadow: 0 2px 18px rgba(0,0,0,.6);
   }
   .brand .logo {
@@ -61,12 +155,71 @@
   }
   .brand h1 { font-size: 19px; margin: 0; letter-spacing: .3px; font-weight: 800; }
   .brand h1 span { color: var(--ink-dim); font-weight: 600; }
+  .brand.sm h1 { font-size: 16px; }
+  .brand.sm .logo { width: 28px; height: 28px; border-radius: 8px; }
 
-  /* ---------- Top-right controls ---------- */
-  .topbar {
-    position: absolute; top: 14px; right: 16px; z-index: 30;
-    display: flex; gap: 8px; align-items: center;
+  /* ---------- Menu / splash ---------- */
+  .menu-hero { text-align: center; margin-bottom: 26px; }
+  .menu-hero .logo {
+    width: 64px; height: 64px; border-radius: 18px; margin: 0 auto 14px;
+    background: conic-gradient(from 210deg, var(--accent), var(--accent-2), var(--accent-3), var(--accent));
+    box-shadow: 0 10px 30px rgba(110,231,255,.4);
   }
+  .menu-hero h1 { font-size: 34px; margin: 0; font-weight: 800; letter-spacing: .3px; }
+  .menu-hero h1 span { color: var(--ink-dim); font-weight: 600; font-size: 18px; }
+  .menu-hero p { color: var(--ink-dim); margin: 8px 0 0; font-size: 14px; }
+  .menu-card {
+    width: min(560px, 100%);
+    background: var(--panel); backdrop-filter: blur(16px);
+    border: 1px solid var(--stroke); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 22px;
+  }
+  .mode-group { margin-bottom: 14px; }
+  .mode-group h4 { margin: 0 0 8px; font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; }
+  .menu-footer { width: min(560px, 100%); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+  .menu-footer .btn { width: auto; flex: 1; min-width: 84px; }
+
+  /* ---------- Expert quiz stage ---------- */
+  .quiz-stage {
+    width: min(620px, 100%);
+    background: var(--panel); backdrop-filter: blur(16px);
+    border: 1px solid var(--stroke); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 26px 26px 24px;
+  }
+  .eq-flag { width: 180px; height: auto; border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,.5); display: block; margin: 0 auto 12px; }
+
+  /* ---------- Autocomplete ---------- */
+  .ac { position: relative; margin-top: 16px; }
+  .ac-input {
+    width: 100%; padding: 14px 15px; border-radius: var(--radius-sm);
+    background: rgba(8,12,26,.6); color: var(--ink); border: 1px solid var(--stroke);
+    font-size: 16px; outline: none; font-family: inherit;
+  }
+  .ac-input:focus { border-color: var(--accent); }
+  .ac-list {
+    position: absolute; left: 0; right: 0; top: calc(100% + 6px);
+    background: var(--panel-solid); border: 1px solid var(--stroke);
+    border-radius: var(--radius-sm); box-shadow: var(--shadow); overflow: hidden; z-index: 5;
+  }
+  .ac-list[hidden] { display: none; }
+  .ac-opt { padding: 11px 14px; font-size: 14px; cursor: pointer; }
+  .ac-opt:hover, .ac-opt.active { background: rgba(110,231,255,.16); }
+
+  /* ---------- Border multi-select grid ---------- */
+  .border-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 16px; }
+  .bsel {
+    padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--stroke);
+    background: rgba(255,255,255,.04); color: var(--ink); font-size: 14px; font-weight: 600;
+    text-align: left; transition: all .14s ease;
+  }
+  .bsel:hover:not(:disabled) { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.25); }
+  .bsel.sel { background: linear-gradient(135deg, rgba(110,231,255,.22), rgba(167,139,250,.22)); border-color: rgba(110,231,255,.5); }
+  .bsel.correct { background: linear-gradient(135deg, rgba(52,211,153,.25), rgba(52,211,153,.12)); border-color: var(--good); color: #d6ffe9; }
+  .bsel.wrong { background: linear-gradient(135deg, rgba(248,113,113,.22), rgba(248,113,113,.1)); border-color: var(--bad); color: #ffd9d9; }
+  .bsel.missed { border-color: var(--warn); border-style: dashed; }
+  .bsel:disabled { cursor: default; }
+
+  /* ---------- Icon controls ---------- */
   .icon-btn {
     width: 40px; height: 40px; display: grid; place-items: center;
     border-radius: 12px; border: 1px solid var(--stroke);
@@ -76,17 +229,7 @@
   .icon-btn:hover { transform: translateY(-1px); background: rgba(40,48,90,.85); border-color: rgba(255,255,255,.16); }
   .icon-btn.active { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0b1020; border-color: transparent; }
 
-  /* ---------- Control panel ---------- */
-  #panel {
-    position: absolute; top: 70px; left: 22px; z-index: 25;
-    width: 300px; max-height: calc(100% - 110px);
-    background: var(--panel); backdrop-filter: blur(16px);
-    border: 1px solid var(--stroke); border-radius: var(--radius);
-    box-shadow: var(--shadow); overflow: hidden auto;
-    transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .25s;
-  }
-  #panel.collapsed { transform: translateX(-340px); opacity: 0; pointer-events: none; }
-  .panel-body { padding: 16px 16px 18px; }
+  /* ---------- Control sections (shared by menu) ---------- */
   .section { margin-bottom: 18px; }
   .section:last-child { margin-bottom: 4px; }
   .section h3 {
@@ -150,7 +293,7 @@
 
   /* ---------- Quiz HUD ---------- */
   #hud {
-    position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
     z-index: 28; width: min(560px, calc(100% - 60px));
     background: var(--panel); backdrop-filter: blur(16px);
     border: 1px solid var(--stroke); border-radius: var(--radius);
@@ -183,7 +326,7 @@
 
   /* ---------- Feedback reveal card ---------- */
   #reveal {
-    position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
     z-index: 29; width: min(560px, calc(100% - 60px));
     background: var(--panel-solid); border: 1px solid var(--stroke);
     border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px;
@@ -205,9 +348,10 @@
 
   /* ---------- Scorebar ---------- */
   #scorebar {
-    position: absolute; top: 70px; right: 16px; z-index: 26;
-    display: flex; gap: 10px;
+    position: fixed; top: 70px; right: 16px; z-index: 26;
+    display: none; gap: 10px;
   }
+  #scorebar.visible { display: flex; }
   .stat-pill {
     background: var(--panel); backdrop-filter: blur(12px); border: 1px solid var(--stroke);
     border-radius: 14px; padding: 8px 13px; text-align: center; min-width: 60px;
@@ -220,7 +364,7 @@
 
   /* ---------- Toast ---------- */
   #toast {
-    position: absolute; top: 18px; left: 50%; transform: translateX(-50%) translateY(-80px);
+    position: fixed; top: 18px; left: 50%; transform: translateX(-50%) translateY(-80px);
     z-index: 50; background: var(--panel-solid); border: 1px solid var(--stroke);
     padding: 11px 18px; border-radius: 14px; font-size: 13.5px; font-weight: 600;
     box-shadow: var(--shadow); transition: transform .3s cubic-bezier(.2,.8,.2,1); max-width: 80%;
@@ -231,7 +375,7 @@
 
   /* ---------- Modal (results / stats) ---------- */
   .modal-back {
-    position: absolute; inset: 0; z-index: 60; background: rgba(5,8,18,.7);
+    position: fixed; inset: 0; z-index: 60; background: rgba(5,8,18,.7);
     backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; padding: 24px;
   }
   .modal-back.show { display: flex; }
@@ -275,7 +419,7 @@
 
   /* ---------- Loading / error ---------- */
   #loader {
-    position: absolute; inset: 0; z-index: 80; display: grid; place-items: center;
+    position: fixed; inset: 0; z-index: 80; display: grid; place-items: center;
     background: radial-gradient(900px 600px at 60% 20%, #16204a 0%, var(--bg) 60%);
   }
   #loader.gone { display: none; }
@@ -300,115 +444,186 @@
   .label { fill: var(--ink); font-size: 8px; pointer-events: none; text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 2px; stroke-opacity: .55; font-weight: 600; }
 
   @media (max-width: 720px) {
-    #panel { width: calc(100% - 44px); }
     .choices { grid-template-columns: 1fr; }
+    .border-grid { grid-template-columns: 1fr; }
     .grid-stats { grid-template-columns: repeat(2, 1fr); }
-    #scorebar { top: auto; bottom: 200px; }
+    .menu-footer { gap: 6px; }
+    .menu-footer .btn { min-width: 0; }
   }
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="map-wrap">
-    <svg id="map"></svg>
-    <canvas id="fx-canvas"></canvas>
+<canvas id="fx-canvas"></canvas>
 
-    <div class="brand">
-      <div class="logo"></div>
-      <h1>Atlas <span>· geography trainer</span></h1>
-    </div>
-
-    <div class="topbar">
-      <button class="icon-btn" id="btn-panel" title="Toggle controls (Tab)">☰</button>
-      <button class="icon-btn" id="btn-heatmap" title="Mastery heatmap">🌡️</button>
-      <button class="icon-btn" id="btn-sound" title="Sound (off)">🔇</button>
-      <button class="icon-btn" id="btn-stats" title="Stats dashboard">📊</button>
-    </div>
-
-    <div id="scorebar">
-      <div class="stat-pill"><div class="v" id="sb-score">0</div><div class="l">Score</div></div>
-      <div class="stat-pill"><div class="v" id="sb-acc">—</div><div class="l">Accuracy</div></div>
-      <div class="stat-pill streak"><div class="v" id="sb-streak">0</div><div class="l">Streak</div></div>
-      <div class="stat-pill" id="timer-ring"><div class="v" id="sb-timer">15</div><div class="l">Timer</div></div>
-    </div>
-
-    <!-- Control panel -->
-    <aside id="panel">
-      <div class="panel-body">
-        <div class="section">
-          <h3>Quiz Modes</h3>
-          <div class="chips" id="mode-chips"></div>
-        </div>
-
-        <div class="section">
-          <h3>Continent</h3>
-          <select id="filter-region"></select>
-        </div>
-        <div class="section">
-          <h3>Subregion</h3>
-          <select id="filter-subregion"></select>
-        </div>
-
-        <div class="section">
-          <h3>Session</h3>
-          <div class="seg" id="seg-session">
-            <button data-v="round" class="on">Round</button>
-            <button data-v="endless">Endless</button>
-          </div>
-          <div class="row" id="round-len-row" style="margin-top:8px;">
-            <span style="font-size:12.5px;color:var(--ink-dim);flex:1;">Questions</span>
-            <select id="round-len" style="width:90px;">
-              <option>10</option><option selected>15</option><option>20</option>
-            </select>
-          </div>
-          <label class="toggle">
-            <div>Timed challenge <small>Adds a per-question clock (scoring only)</small></div>
-            <span class="switch"><input type="checkbox" id="opt-timed"><span></span></span>
-          </label>
-        </div>
-
-        <div class="section">
-          <button class="btn" id="btn-start">Start session ▸</button>
-          <div class="split" style="margin-top:9px;">
-            <button class="btn ghost small" id="btn-export">Export</button>
-            <button class="btn ghost small" id="btn-import">Import</button>
-            <button class="btn ghost small" id="btn-reset" title="Reset all progress">Reset</button>
-          </div>
-          <input type="file" id="import-file" accept="application/json" hidden>
-          <div class="hint">
-            Scroll to zoom · drag to pan · double-click to focus · <b>Esc</b> resets the view.
-          </div>
-        </div>
-      </div>
-    </aside>
-
-    <!-- Quiz HUD -->
-    <div id="hud" class="hidden">
-      <div class="q-top">
-        <span class="q-mode" id="q-mode">—</span>
-        <span class="q-progress" id="q-progress"></span>
-      </div>
-      <div id="q-body"></div>
-      <div id="q-controls"></div>
-    </div>
-
-    <!-- Reveal card -->
-    <div id="reveal">
-      <div class="rv-head">
-        <img class="rv-flag" id="rv-flag" alt="">
-        <div>
-          <div class="rv-name" id="rv-name"></div>
-          <div class="rv-cap" id="rv-cap"></div>
-        </div>
-        <div class="rv-verdict" id="rv-verdict"></div>
-      </div>
-      <div class="rv-meta" id="rv-meta"></div>
-      <button class="btn rv-next" id="rv-next">Next ▸</button>
-    </div>
-
-    <div id="toast"></div>
+<!-- ============ MENU / SPLASH ============ -->
+<section id="screen-menu" class="screen active">
+  <div class="menu-hero">
+    <div class="logo"></div>
+    <h1>Atlas <span>· geography trainer</span></h1>
+    <p>Pick a quiz, set your parameters, and go.</p>
   </div>
+
+  <div class="menu-card">
+    <div class="section">
+      <h3>Choose your quiz</h3>
+      <div class="mode-group">
+        <h4>On the world map</h4>
+        <div class="chips" id="modes-map"></div>
+      </div>
+      <div class="mode-group">
+        <h4>Expert mode · no map</h4>
+        <div class="chips" id="modes-expert"></div>
+      </div>
+      <div class="mode-group">
+        <h4>Build a continent</h4>
+        <div class="chips" id="modes-build"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Continent</h3>
+      <select id="filter-region"></select>
+    </div>
+    <div class="section" id="sec-subregion">
+      <h3>Subregion</h3>
+      <select id="filter-subregion"></select>
+    </div>
+
+    <div class="section">
+      <h3>Session</h3>
+      <div class="seg" id="seg-session">
+        <button data-v="round" class="on">Round</button>
+        <button data-v="endless">Endless</button>
+      </div>
+      <div class="row" id="round-len-row" style="margin-top:8px;">
+        <span style="font-size:12.5px;color:var(--ink-dim);flex:1;">Questions</span>
+        <select id="round-len" style="width:90px;">
+          <option>10</option><option selected>15</option><option>20</option>
+        </select>
+      </div>
+      <label class="toggle">
+        <div>Session timer <small>Times your whole run — answer at your own pace</small></div>
+        <span class="switch"><input type="checkbox" id="opt-timed"><span></span></span>
+      </label>
+      <label class="toggle" id="row-shownames" style="display:none;">
+        <div>Show names <small>Off: name each country after placing it to earn credit</small></div>
+        <span class="switch"><input type="checkbox" id="opt-shownames"><span></span></span>
+      </label>
+    </div>
+
+    <div class="section" style="margin-bottom:0;">
+      <button class="btn" id="btn-start">Start session ▸</button>
+    </div>
+  </div>
+
+  <div class="menu-footer">
+    <button class="btn ghost small" id="btn-stats">📊 Stats</button>
+    <button class="btn ghost small" id="btn-export">Export</button>
+    <button class="btn ghost small" id="btn-import">Import</button>
+    <button class="btn ghost small" id="btn-reset" title="Reset all progress">Reset</button>
+    <button class="btn ghost small sound-btn" title="Sound (off)">🔇</button>
+    <input type="file" id="import-file" accept="application/json" hidden>
+  </div>
+</section>
+
+<!-- ============ MAP QUIZ SCREEN ============ -->
+<section id="screen-map" class="screen">
+  <div id="map-wrap"><svg id="map"></svg></div>
+
+  <div class="screen-top">
+    <div class="st-left">
+      <button class="icon-btn" data-back title="Back to menu">←</button>
+      <div class="brand sm"><div class="logo"></div><h1>Atlas</h1></div>
+    </div>
+    <div class="st-right">
+      <button class="icon-btn heatmap-btn" title="Mastery heatmap">🌡️</button>
+      <button class="icon-btn sound-btn" title="Sound (off)">🔇</button>
+    </div>
+  </div>
+
+  <!-- Map question bar -->
+  <div id="hud" class="hidden">
+    <div class="q-top">
+      <span class="q-mode" id="q-mode">—</span>
+      <span class="q-progress" id="q-progress"></span>
+    </div>
+    <div id="q-body"></div>
+    <div id="q-controls"></div>
+  </div>
+</section>
+
+<!-- ============ EXPERT QUIZ SCREEN ============ -->
+<section id="screen-quiz" class="screen">
+  <div class="screen-top">
+    <div class="st-left">
+      <button class="icon-btn" data-back title="Back to menu">←</button>
+      <div class="brand sm"><div class="logo"></div><h1>Atlas</h1></div>
+    </div>
+    <div class="st-right">
+      <button class="icon-btn sound-btn" title="Sound (off)">🔇</button>
+    </div>
+  </div>
+
+  <div class="quiz-stage">
+    <div class="q-top">
+      <span class="q-mode" id="eq-mode">—</span>
+      <span class="q-progress" id="eq-progress"></span>
+    </div>
+    <div id="eq-body"></div>
+    <div id="eq-controls"></div>
+  </div>
+</section>
+
+<!-- ============ CONTINENT BUILDER SCREEN ============ -->
+<section id="screen-build" class="screen">
+  <div id="build-wrap"><svg id="build-svg"></svg></div>
+
+  <div class="screen-top">
+    <div class="st-left">
+      <button class="icon-btn" data-back title="Back to menu">←</button>
+      <div class="brand sm"><div class="logo"></div><h1>Atlas</h1></div>
+    </div>
+    <div class="st-right">
+      <button class="icon-btn sound-btn" title="Sound (off)">🔇</button>
+    </div>
+  </div>
+
+  <div id="build-banner">
+    <div class="bb-title" id="build-title">Build a continent</div>
+    <div class="bb-sub" id="build-sub">Build outward from the seed</div>
+    <div class="bb-timer" id="build-timer" hidden></div>
+  </div>
+
+  <div id="build-name" hidden>
+    <div class="bn-prompt">Name the country you just placed</div>
+    <div id="build-name-host"></div>
+  </div>
+
+  <div id="build-bank" aria-label="Country bank"></div>
+</section>
+
+<!-- ============ Shared overlays ============ -->
+<div id="scorebar">
+  <div class="stat-pill"><div class="v" id="sb-score">0</div><div class="l">Score</div></div>
+  <div class="stat-pill"><div class="v" id="sb-acc">—</div><div class="l">Accuracy</div></div>
+  <div class="stat-pill streak"><div class="v" id="sb-streak">0</div><div class="l">Streak</div></div>
+  <div class="stat-pill" id="timer-ring"><div class="v" id="sb-timer">0:00</div><div class="l">Time</div></div>
 </div>
+
+<div id="reveal">
+  <div class="rv-head">
+    <img class="rv-flag" id="rv-flag" alt="">
+    <div>
+      <div class="rv-name" id="rv-name"></div>
+      <div class="rv-cap" id="rv-cap"></div>
+    </div>
+    <div class="rv-verdict" id="rv-verdict"></div>
+  </div>
+  <div class="rv-meta" id="rv-meta"></div>
+  <button class="btn rv-next" id="rv-next">Next ▸</button>
+</div>
+
+<div id="toast"></div>
 
 <!-- Loader -->
 <div id="loader">
@@ -432,7 +647,21 @@
     <div class="stat-block" id="res-weak"></div>
     <div class="split">
       <button class="btn" id="res-again">Play again</button>
-      <button class="btn ghost" id="res-stats">View full stats</button>
+      <button class="btn ghost" id="res-stats">Full stats</button>
+      <button class="btn ghost" id="res-menu">Menu</button>
+    </div>
+  </div>
+</div>
+
+<!-- Build completion modal -->
+<div class="modal-back" id="build-done-back">
+  <div class="modal" style="position:relative;">
+    <h2 id="bd-title">Continent complete! 🎉</h2>
+    <div class="sub" id="bd-sub"></div>
+    <div class="grid-stats" id="bd-kpis"></div>
+    <div class="split">
+      <button class="btn" id="bd-again">Build again</button>
+      <button class="btn ghost" id="bd-menu">Menu</button>
     </div>
   </div>
 </div>
@@ -502,14 +731,14 @@ const REST_URL = "https://cdn.jsdelivr.net/gh/mledoze/countries@5.1.0/countries.
 // this dataset (not XKX), Taiwan "TWN", Vatican is already unMember.
 const EXTRA_SOVEREIGN = new Set(["TWN", "UNK", "PSE"]);
 const MODES = {
-  find:    { id: "find",    label: "Find on map",   map: true,  short: "Find" },
-  capital: { id: "capital", label: "→ Capital",      map: false, short: "Capital" },
-  flag:    { id: "flag",    label: "Flag → Country", map: false, short: "Flag" },
-  name:    { id: "name",    label: "Name the country", map: true, short: "Name" },
-  border:  { id: "border",  label: "Borders",        map: true,  short: "Borders" }
+  find:    { id: "find",    label: "Find on map",      group: "map",    map: true,  short: "Find" },
+  name:    { id: "name",    label: "Name the country", group: "map",    map: true,  short: "Name" },
+  capital: { id: "capital", label: "Capital",          group: "expert", map: false, short: "Capital" },
+  flag:    { id: "flag",    label: "Flag",             group: "expert", map: false, short: "Flag" },
+  border:  { id: "border",  label: "Borders",          group: "expert", map: false, short: "Borders" },
+  build:   { id: "build",   label: "Build a continent", group: "build", map: false, short: "Build" }
 };
 const BOX_COLORS = ["#f87171", "#fb923c", "#fbbf24", "#a3e635", "#34d399"]; // box 1..5 red→green
-const TIMED_SECONDS = 15;
 
 /* ---------------------------------------------------------------------
    PURE LOGIC  (no DOM, no D3) — exposed as window.GEO
@@ -549,8 +778,13 @@ const Logic = {
     const now = opts.now || Date.now();
     const rng = opts.rng || Math.random;
     const avoidId = opts.avoidId;
-    const candidates = pool.filter(c => c.id !== avoidId);
-    const list = candidates.length ? candidates : pool;
+    const exclude = opts.exclude; // ids already asked this session — skip while any remain
+    let list = pool.filter(c => c.id !== avoidId);
+    if (exclude && exclude.size) {
+      const fresh = list.filter(c => !exclude.has(c.id));
+      if (fresh.length) list = fresh;
+    }
+    if (!list.length) list = pool;
     const weights = list.map(c => Logic.itemWeight(leitner[c.id + ":" + mode], now));
     const total = weights.reduce((a, b) => a + b, 0);
     let r = rng() * total;
@@ -613,12 +847,249 @@ const Logic = {
     return count ? sum / count : null; // null = untouched
   },
 
+  // Normalise a free-text answer for comparison: lowercase, strip accents and
+  // punctuation, collapse whitespace. So "Côte d'Ivoire" == "cote divoire".
+  normalize(s) {
+    return (s == null ? "" : String(s))
+      .toLowerCase()
+      .normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  },
+
+  // Typed-answer grader: forgiving on case / accents / punctuation only.
+  matchAnswer(typed, correct) {
+    const t = Logic.normalize(typed);
+    return t.length > 0 && t === Logic.normalize(correct);
+  },
+
+  // Autocomplete suggestions: prefix matches first, then substring matches.
+  suggest(typed, candidates, n = 6) {
+    const q = Logic.normalize(typed);
+    if (!q) return [];
+    const starts = [], incl = [];
+    for (const c of candidates) {
+      const nc = Logic.normalize(c);
+      if (nc.startsWith(q)) starts.push(c);
+      else if (nc.includes(q)) incl.push(c);
+    }
+    return starts.concat(incl).slice(0, n);
+  },
+
+  // Modes within one session must all belong to the same screen group
+  // (map vs expert). Coerce a possibly-mixed set down to its dominant group.
+  sanitizeModes(modes) {
+    const valid = (Array.isArray(modes) ? modes : []).filter(m => MODES[m]);
+    if (!valid.length) return ["find", "name"];
+    const grp = MODES[valid[0]].group;
+    const kept = valid.filter(m => MODES[m].group === grp);
+    return kept.length ? kept : ["find", "name"];
+  },
+
+  // Milliseconds → "m:ss" (or "h:mm:ss" past an hour) for the session clock.
+  fmtDuration(ms) {
+    const total = Math.max(0, Math.round(ms / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const pad = (n) => String(n).padStart(2, "0");
+    return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+  },
+
   _shuffle(arr, rng = Math.random) {
     for (let i = arr.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     return arr;
+  }
+};
+
+/* ---------------------------------------------------------------------
+   BUILD GRAPH (pure, no DOM/D3) — continent adjacency, connected
+   components, the placeable mainland set, excluded islands, and the
+   central-seed candidates. Exposed on window.GEO for testing.
+   ------------------------------------------------------------------- */
+const BuildGraph = {
+  // Continents with a connected internal land-border mainland. Oceania has
+  // no such graph (its members are islands) so it is unsupported in v1.
+  SUPPORTED: ["Africa", "Asia", "Europe", "Americas"],
+
+  // Reasonably central, well-known seed candidates per continent (cca3).
+  // Intersected with the placeable set at build time; if none survive we
+  // fall back to the most-connected countries in the mainland component.
+  SEED_CCA3: {
+    Africa:   ["TCD", "NGA", "COD", "SDN", "CAF", "CMR", "NER", "ETH", "KEN", "TZA"],
+    Asia:     ["CHN", "KAZ", "IND", "IRN", "AFG", "UZB", "MNG", "PAK", "TKM"],
+    Europe:   ["DEU", "POL", "AUT", "CZE", "HUN", "CHE", "SVK", "FRA", "SRB"],
+    Americas: ["BRA", "BOL", "COL", "PER", "USA", "MEX", "ARG", "PRY"]
+  },
+
+  // Same-continent land-border adjacency as id -> Set(id). Only edges where
+  // both endpoints sit in the chosen continent are kept.
+  adjacency(countries, continent) {
+    const inC = countries.filter(c => c.region === continent);
+    const ids = new Set(inC.map(c => c.id));
+    const adj = new Map();
+    for (const c of inC) adj.set(c.id, new Set());
+    for (const c of inC) {
+      for (const n of c.neighbours) {
+        if (ids.has(n.id)) { adj.get(c.id).add(n.id); adj.get(n.id).add(c.id); }
+      }
+    }
+    return adj;
+  },
+
+  // Connected components (arrays of country objects), largest first.
+  components(countries, continent) {
+    const inC = countries.filter(c => c.region === continent);
+    const byId = new Map(inC.map(c => [c.id, c]));
+    const adj = this.adjacency(countries, continent);
+    const seen = new Set();
+    const comps = [];
+    for (const c of inC) {
+      if (seen.has(c.id)) continue;
+      const stack = [c.id], group = [];
+      seen.add(c.id);
+      while (stack.length) {
+        const id = stack.pop();
+        group.push(byId.get(id));
+        for (const nb of adj.get(id)) if (!seen.has(nb)) { seen.add(nb); stack.push(nb); }
+      }
+      comps.push(group);
+    }
+    comps.sort((a, b) => b.length - a.length);
+    return comps;
+  },
+
+  // Full build model for a continent: the adjacency, the placeable mainland
+  // (largest component), the excluded islands, and the seed candidates.
+  build(countries, continent) {
+    const adj = this.adjacency(countries, continent);
+    const supported = this.SUPPORTED.includes(continent);
+    const comps = this.components(countries, continent);
+    const mainland = comps[0] || [];
+    // Buildable only if we support the continent and its mainland has enough
+    // connected countries to actually assemble outward from a seed.
+    const buildable = supported && mainland.length >= 3;
+    const placeable = buildable ? mainland : [];
+    const placeableIds = new Set(placeable.map(c => c.id));
+    const islands = countries.filter(c => c.region === continent && !placeableIds.has(c.id));
+    // Seed candidates: curated central set ∩ placeable; else most-connected.
+    const wanted = new Set(this.SEED_CCA3[continent] || []);
+    let seedCandidates = placeable.filter(c => wanted.has(c.cca3));
+    if (!seedCandidates.length && placeable.length) {
+      seedCandidates = placeable.slice()
+        .sort((a, b) => (adj.get(b.id)?.size || 0) - (adj.get(a.id)?.size || 0))
+        .slice(0, Math.min(6, placeable.length));
+    }
+    return { continent, supported, buildable, adjacency: adj, placeable, islands, seedCandidates };
+  },
+
+  // Unlock predicate: a not-yet-placed country can be placed now only if it
+  // borders something already placed (the seed begins placed). Pure over the
+  // adjacency map produced by build()/adjacency().
+  isUnlocked(country, placedIds, adjacency) {
+    if (!country || placedIds.has(country.id)) return false;
+    const nb = adjacency.get(country.id);
+    if (!nb) return false;
+    for (const id of nb) if (placedIds.has(id)) return true;
+    return false;
+  }
+};
+
+/* ---------------------------------------------------------------------
+   PLACEMENT (pure) — screen-space geometry for the build drag layer.
+   Decides whether a dropped piece snaps, given the piece's projected
+   polygon, the placed neighbours' polygons, and the two margins. Polygons
+   are arrays of rings; rings are arrays of [x, y] pixel points. Exposed on
+   window.GEO for testing.
+   ------------------------------------------------------------------- */
+const Placement = {
+  _dist(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1]); },
+
+  // Distance from point p to segment a-b.
+  _ptSeg(p, a, b) {
+    const vx = b[0] - a[0], vy = b[1] - a[1];
+    const wx = p[0] - a[0], wy = p[1] - a[1];
+    const c1 = vx * wx + vy * wy;
+    if (c1 <= 0) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+    const c2 = vx * vx + vy * vy;
+    if (c2 <= c1) return Math.hypot(p[0] - b[0], p[1] - b[1]);
+    const t = c1 / c2;
+    return Math.hypot(p[0] - (a[0] + t * vx), p[1] - (a[1] + t * vy));
+  },
+
+  // Proper crossing test for segments a-b and c-d.
+  _segCross(a, b, c, d) {
+    const o = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+    const d1 = o(c, d, a), d2 = o(c, d, b), d3 = o(a, b, c), d4 = o(a, b, d);
+    return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+           ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+  },
+
+  // Minimum distance between two segments (0 if they cross).
+  _segSeg(a, b, c, d) {
+    if (this._segCross(a, b, c, d)) return 0;
+    return Math.min(this._ptSeg(a, c, d), this._ptSeg(b, c, d),
+                    this._ptSeg(c, a, b), this._ptSeg(d, a, b));
+  },
+
+  // Even-odd point-in-ring test (ring may be open or closed).
+  _ptInRing(p, ring) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if (((yi > p[1]) !== (yj > p[1])) &&
+          (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+  },
+
+  // Minimum distance between the boundaries of two polygons. 0 when they
+  // overlap (an edge crosses, or one contains a vertex of the other); ~0 when
+  // they merely touch; the separation gap otherwise.
+  minEdgeGap(polyA, polyB) {
+    for (const ring of polyA) for (const p of ring)
+      for (const rb of polyB) if (this._ptInRing(p, rb)) return 0;
+    for (const ring of polyB) for (const p of ring)
+      for (const ra of polyA) if (this._ptInRing(p, ra)) return 0;
+    let min = Infinity;
+    for (const ra of polyA) {
+      const na = ra.length;
+      for (let i = 0; i < na; i++) {
+        const a1 = ra[i], a2 = ra[(i + 1) % na];
+        for (const rb of polyB) {
+          const nb = rb.length;
+          for (let j = 0; j < nb; j++) {
+            const d = this._segSeg(a1, a2, rb[j], rb[(j + 1) % nb]);
+            if (d < min) min = d;
+            if (min === 0) return 0;
+          }
+        }
+      }
+    }
+    return min;
+  },
+
+  // Decide a drop. Adjacency is a precondition (a locked country never snaps).
+  // Snap when the piece's centroid is within the fallback radius of its true
+  // centroid, OR when its edges come within the border-gap of a placed
+  // neighbour. On success the snap target is the true position.
+  // Returns { ok, snapTo, reason } where reason ∈ locked|centroid|border|far.
+  validate(opts) {
+    const { isAdjacent, dropCentroid, trueCentroid, pieceRings,
+            neighbourRings, borderGap, centroidRadius } = opts;
+    if (!isAdjacent) return { ok: false, snapTo: null, reason: "locked" };
+    if (this._dist(dropCentroid, trueCentroid) <= centroidRadius) {
+      return { ok: true, snapTo: trueCentroid, reason: "centroid" };
+    }
+    for (const nb of (neighbourRings || [])) {
+      if (this.minEdgeGap(pieceRings, nb) <= borderGap) {
+        return { ok: true, snapTo: trueCentroid, reason: "border" };
+      }
+    }
+    return { ok: false, snapTo: null, reason: "far" };
   }
 };
 
@@ -631,14 +1102,15 @@ const State = {
     return {
       version: STATE_VERSION,
       settings: {
-        modes: ["find", "capital", "flag"],
+        modes: ["find", "name"],
         region: "all",
         subregion: "all",
         session: "round",
         roundLen: 15,
         timed: false,
         sound: false,
-        heatmap: false
+        heatmap: false,
+        showNames: true   // continent builder: labelled tiles (off = name-for-credit)
       },
       leitner: {},     // "id:mode" -> {box, seen, correct, lastSeen}
       history: [],      // [{id, mode, correct, ms, region, t}]
@@ -688,6 +1160,7 @@ const State = {
    DATA LAYER — fetch + join + cache
    ------------------------------------------------------------------- */
 const DataLayer = {
+  topo: null,             // raw TopoJSON topology (retained for merge/silhouette)
   countries: [],          // sovereign country objects
   byCcn3: new Map(),      // padded ccn3 -> country
   byCca3: new Map(),
@@ -715,6 +1188,10 @@ const DataLayer = {
   },
 
   _hydrate(topo, meta) {
+    // Retain the raw topology: the Continent Builder dissolves the placeable
+    // set into one silhouette via topojson.merge, which needs the topology
+    // (arcs), not just the extracted GeoJSON features.
+    this.topo = topo;
     // Build features from topojson.
     const obj = topo.objects.countries;
     const fc = topojson.feature(topo, obj);
@@ -885,7 +1362,22 @@ const MapView = {
   width: 0, height: 0,
   onSelect: null,           // callback(country)
   _regionColor: null,
+  _inited: false,
   tinyIds: new Set(),
+
+  // Lazily build the map the first time a map quiz is entered. D3 cannot
+  // measure #map-wrap until its screen is visible, so we defer one frame.
+  ensure(cb) {
+    if (this._inited) { cb && cb(); return; }
+    requestAnimationFrame(() => {
+      this.init();
+      this.render();
+      this.onSelect = (c) => Quiz.handleMapSelect(c);
+      if (State.data.settings.heatmap) this.refreshColors();
+      this._inited = true;
+      cb && cb();
+    });
+  },
 
   REGION_BASE: {
     "Africa": "#3b4a7a", "Americas": "#3a5a78", "Asia": "#5a4a7e",
@@ -1018,10 +1510,6 @@ const MapView = {
       .attr("fill", d => this._fillFor(d));
   },
 
-  setLabelsAllowed(_allowed) {
-    // Country names are never shown on the map in any mode or zoom level.
-    this.gLabels.attr("opacity", 0);
-  },
 
   // Selection is debounced so a double-click (zoom gesture) never registers as
   // an answer: the first click schedules the select, the dblclick cancels it.
@@ -1103,6 +1591,480 @@ const MapView = {
 };
 
 /* ---------------------------------------------------------------------
+   BUILD VIEW — renders the continent silhouette + placed pieces.
+   A projection fit to the chosen continent (not the world projection).
+   ------------------------------------------------------------------- */
+const BuildView = {
+  svg: null, gSil: null, gPlaced: null, gLabels: null, gDrag: null,
+  path: null, projection: null, width: 0, height: 0,
+  model: null, extent: 0, borderGap: 0, centroidRadius: 0,
+  drag: null, _dragWired: false,
+
+  // The build screen must be visible before D3 can measure #build-wrap, so
+  // (re)render one frame after Nav switches to it. Re-renders every game.
+  show(model) {
+    this.model = model;
+    requestAnimationFrame(() => {
+      this._init();
+      this._render();
+      this.renderBank();
+      this._wireDrag();
+    });
+  },
+
+  _init() {
+    const wrap = document.getElementById("build-wrap");
+    this.width = wrap.clientWidth;
+    this.height = wrap.clientHeight;
+    this.svg = d3.select("#build-svg").attr("viewBox", [0, 0, this.width, this.height]);
+    this.svg.selectAll("*").remove();
+    // Ocean stays fixed (outside the zoomed group); everything else lives in a
+    // single world group that carries the pan/zoom transform.
+    this.svg.append("rect").attr("width", this.width).attr("height", this.height)
+      .attr("fill", "var(--map-sea)");
+    this.g = this.svg.append("g").attr("class", "build-world");
+    this.gSil = this.g.append("g");
+    this.gPlaced = this.g.append("g");
+    this.gLabels = this.g.append("g");
+    this.gDrag = this.g.append("g");
+    this.transform = d3.zoomIdentity;
+    this._setupZoom();
+  },
+
+  // Same pan/zoom mechanics as the identification map: drag to pan, wheel or
+  // double-click to zoom, Escape to reset. Geometry stays in projection space;
+  // this is purely a view transform applied to the world group.
+  _setupZoom() {
+    this.zoom = d3.zoom().scaleExtent([1, 8])
+      .translateExtent([[0, 0], [this.width, this.height]])
+      .on("zoom", (ev) => {
+        this.transform = ev.transform;
+        this.g.attr("transform", ev.transform);
+        this._applyZoomScale();
+      });
+    this.svg.call(this.zoom).on("dblclick.zoom", null);
+    this.svg.on("dblclick", (ev) => {
+      const [mx, my] = d3.pointer(ev, this.svg.node());
+      this.zoomToPoint(mx, my, 3);
+    });
+    this.svg.on("mousedown.cursor", () => this.svg.node().classList.add("grabbing"));
+    window.addEventListener("mouseup", () => { if (this.svg) this.svg.node().classList.remove("grabbing"); });
+  },
+
+  zoomToPoint(mx, my, k = 3) {
+    const t = d3.zoomIdentity.translate(this.width / 2, this.height / 2).scale(k).translate(-mx, -my);
+    this.svg.transition().duration(600).call(this.zoom.transform, t);
+  },
+  resetZoom() {
+    if (this.svg && this.zoom) this.svg.transition().duration(500).call(this.zoom.transform, d3.zoomIdentity);
+  },
+
+  // Screen point (relative to the canvas) and the same point in projection
+  // space — undoing the current zoom transform so snapping works at any zoom.
+  _svgPoint(ev) {
+    const r = document.getElementById("build-wrap").getBoundingClientRect();
+    return [ev.clientX - r.left, ev.clientY - r.top];
+  },
+  _localPoint(ev) {
+    return this.transform.invert(this._svgPoint(ev));
+  },
+
+  // Labels live in the zoomed group, so counter-scale their font by 1/k to
+  // keep them legible. Non-scaling strokes (CSS) handle the outlines.
+  _applyZoomScale() {
+    const k = this.transform ? this.transform.k : 1;
+    this.gLabels.selectAll("text").style("font-size", (12 / k) + "px");
+  },
+
+  // Project the dissolved mainland into the canvas, derive the snap margins
+  // from its on-screen extent, then draw whatever is already placed.
+  _render() {
+    const topo = DataLayer.topo;
+    const geoms = topo.objects.countries.geometries;
+    const placeableCcn3 = new Set(this.model.graph.placeable.map(c => c.ccn3).filter(Boolean));
+    const memberGeoms = geoms.filter(g => placeableCcn3.has(DataLayer.pad3(g.id)));
+    const merged = topojson.merge(topo, memberGeoms);
+
+    this.projection = d3.geoEqualEarth()
+      .fitExtent([[30, 30], [this.width - 30, this.height - 188]], merged);
+    this.path = d3.geoPath(this.projection);
+
+    const b = this.path.bounds(merged);
+    this.extent = Math.hypot(b[1][0] - b[0][0], b[1][1] - b[0][1]);
+    this.centroidRadius = 0.05 * this.extent; // forgiving floor (~5% of extent)
+    this.borderGap = 0.02 * this.extent;
+
+    this.gSil.selectAll("path").data([merged]).join("path")
+      .attr("class", "build-silhouette").attr("d", this.path);
+
+    this._redrawPlaced();
+  },
+
+  // Project a feature's coordinates into [x,y] pixel rings (outer + holes
+  // across all polygons), optionally translated by [dx,dy].
+  _projectRings(feature, dx = 0, dy = 0) {
+    const proj = this.projection;
+    const polys = feature.geometry.type === "Polygon"
+      ? [feature.geometry.coordinates] : feature.geometry.coordinates;
+    const rings = [];
+    for (const poly of polys) for (const ring of poly) {
+      rings.push(ring.map(pt => { const p = proj(pt); return [p[0] + dx, p[1] + dy]; }));
+    }
+    return rings;
+  },
+
+  _placedFeatures() {
+    return this.model.graph.placeable.filter(c => this.model.placedIds.has(c.id) && c.feature);
+  },
+
+  _redrawPlaced() {
+    const placed = this._placedFeatures();
+    const seedId = this.model.seed.id;
+    this.gPlaced.selectAll("path").data(placed, d => d.id).join("path")
+      .attr("class", d => d.id === seedId ? "build-seed" : "build-placed")
+      .attr("d", d => this.path(d.feature));
+    // The seed is always labelled as the orientation anchor; in unnamed mode
+    // wrong-named / hinted countries are revealed with their label too.
+    const revealed = this.model.revealedIds || new Set();
+    const labelled = placed.filter(c => c.id === seedId || revealed.has(c.id));
+    this.gLabels.selectAll("text").data(labelled, d => d.id).join("text")
+      .attr("class", "build-seed-label")
+      .attr("x", d => this.path.centroid(d.feature)[0])
+      .attr("y", d => this.path.centroid(d.feature)[1] + 4)
+      .text(d => d.name);
+    this._applyZoomScale();
+  },
+
+  // Name-for-credit prompt (unnamed mode), reusing the expert autocomplete +
+  // matching primitives. Calls onSubmit(typed) once (Enter / pick / Skip).
+  showNamePrompt(onSubmit) {
+    const wrap = document.getElementById("build-name");
+    const host = document.getElementById("build-name-host");
+    host.innerHTML = "";
+    wrap.hidden = false;
+    const names = [...new Set(this.model.graph.placeable.map(c => c.name))];
+    UI._buildAutocomplete(host, names, (v) => onSubmit(v));
+  },
+  hideNamePrompt() {
+    document.getElementById("build-name").hidden = true;
+    document.getElementById("build-name-host").innerHTML = "";
+  },
+
+  // Bank tiles for every placeable country not yet placed (shuffled).
+  renderBank() {
+    const host = document.getElementById("build-bank");
+    host.innerHTML = "";
+    const remaining = this.model.graph.placeable
+      .filter(c => !this.model.placedIds.has(c.id) && c.feature);
+    Logic._shuffle(remaining.slice()).forEach(c => host.appendChild(this._makeTile(c)));
+    this._updateBanner();
+  },
+
+  _updateBanner() {
+    const total = this.model.graph.placeable.length;
+    document.getElementById("build-sub").textContent =
+      `${this.model.placedIds.size} / ${total} placed`;
+  },
+
+  _makeTile(country) {
+    const tile = document.createElement("button");
+    tile.className = "build-tile";
+    tile.dataset.id = country.id;
+    const named = State.data.settings.showNames !== false;
+    tile.innerHTML = `<span class="tile-hint" role="button" tabindex="0" title="Stuck? Reveal its spot" aria-label="Reveal location">?</span>`
+      + this._tileSVG(country)
+      + (named ? `<div class="tname">${country.name}</div>` : `<div class="tname tname-hidden">·</div>`);
+    tile.addEventListener("pointerdown", (ev) => this._startDrag(ev, country, tile));
+    const hint = tile.querySelector(".tile-hint");
+    // The hint must not start a drag; swallow the pointerdown, act on click.
+    hint.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); ev.preventDefault(); });
+    hint.addEventListener("click", (ev) => { ev.stopPropagation(); Build.hint(country); });
+    return tile;
+  },
+
+  // A normalised, uniformly-sized silhouette of the country for the tile.
+  _tileSVG(country) {
+    const f = country.feature;
+    const proj = d3.geoMercator().fitExtent([[5, 5], [53, 49]], f);
+    const path = d3.geoPath(proj);
+    return `<svg viewBox="0 0 58 54" aria-hidden="true"><path class="build-tile-shape" d="${path(f)}"/></svg>`;
+  },
+
+  /* --- drag layer (pointer events: mouse + touch) --- */
+  _wireDrag() {
+    if (this._dragWired) return;
+    window.addEventListener("pointermove", (ev) => this._moveDrag(ev));
+    window.addEventListener("pointerup", (ev) => this._endDrag(ev));
+    window.addEventListener("pointercancel", () => this._cancelDrag());
+    this._dragWired = true;
+  },
+
+  _startDrag(ev, country, tile) {
+    if (!country.feature || this.drag || Build.naming) return;
+    ev.preventDefault();
+    const trueCentroid = this.path.centroid(country.feature);
+    // The floating piece is the country at true canvas scale.
+    const el = this.gDrag.append("path").attr("class", "build-drag-piece")
+      .attr("d", this.path(country.feature));
+    this.drag = { country, tile, trueCentroid, el };
+    tile.classList.add("dragging");
+    this._moveDrag(ev);
+  },
+
+  _moveDrag(ev) {
+    if (!this.drag) return;
+    const [x, y] = this._localPoint(ev); // projection space; piece scales with the zoomed group
+    const tc = this.drag.trueCentroid;
+    this.drag.el.attr("transform", `translate(${x - tc[0]},${y - tc[1]})`);
+  },
+
+  _cancelDrag() {
+    if (!this.drag) return;
+    this.drag.tile.classList.remove("dragging");
+    this.drag.el.remove();
+    this.drag = null;
+  },
+
+  _endDrag(ev) {
+    if (!this.drag) return;
+    const { country, tile, trueCentroid, el } = this.drag;
+    this.drag = null;
+    tile.classList.remove("dragging");
+    const [x, y] = this._localPoint(ev); // drop position in projection space
+    const dx = x - trueCentroid[0], dy = y - trueCentroid[1];
+    const placedNeighbours = country.neighbours
+      .filter(n => this.model.placedIds.has(n.id) && n.feature);
+    const result = Placement.validate({
+      isAdjacent: BuildGraph.isUnlocked(country, this.model.placedIds, this.model.graph.adjacency),
+      dropCentroid: [x, y],
+      trueCentroid,
+      pieceRings: this._projectRings(country.feature, dx, dy),
+      neighbourRings: placedNeighbours.map(n => this._projectRings(n.feature)),
+      borderGap: this.borderGap,
+      centroidRadius: this.centroidRadius
+    });
+    if (result.ok) { el.remove(); this._place(country, tile); }
+    else this._reject(tile, trueCentroid, el, result.reason);
+  },
+
+  // A rejected drop bounces the piece back to its bank tile and explains why.
+  // "locked" → not yet adjacent to anything placed; "far" → right country,
+  // wrong place. Either way the tile stays in the bank for a retry.
+  _reject(tile, trueCentroid, el, reason) {
+    const r = tile.getBoundingClientRect();
+    const wrap = document.getElementById("build-wrap").getBoundingClientRect();
+    // Tile centre → projection space, so the bounce lands on it at any zoom.
+    const [tx, ty] = this.transform.invert([(r.left + r.width / 2) - wrap.left, (r.top + r.height / 2) - wrap.top]);
+    el.transition().duration(360).ease(d3.easeCubicOut)
+      .attr("transform", `translate(${tx - trueCentroid[0]},${ty - trueCentroid[1]})`)
+      .style("opacity", 0)
+      .remove();
+    tile.classList.remove("reject");
+    void tile.offsetWidth; // restart the shake animation
+    tile.classList.add("reject");
+    setTimeout(() => tile.classList.remove("reject"), 450);
+    UI.toast(reason === "locked"
+      ? "It must touch a country already on the map"
+      : "Not quite there — try again", "bad");
+    Build.afterMistake(reason);
+  },
+
+  // Lock a correctly-placed country to its true coordinates.
+  _place(country, tile) {
+    this.model.placedIds.add(country.id);
+    tile.remove();
+    this._redrawPlaced();
+    this._updateBanner();
+    Build.afterPlace(country);
+  },
+
+  // Reveal a hinted country: drop its tile, draw it in place, and flash the
+  // spot so the player sees where it belonged. State is owned by Build.hint.
+  revealPlace(country) {
+    const tile = document.querySelector(`#build-bank .build-tile[data-id="${country.id}"]`);
+    if (tile) tile.remove();
+    this._redrawPlaced();
+    this._updateBanner();
+    const p = this.gPlaced.selectAll("path").filter(d => d.id === country.id);
+    p.interrupt()
+      .attr("stroke", "#fbbf24").attr("stroke-opacity", 1).attr("stroke-width", 2.5)
+      .transition().duration(900)
+      .attr("stroke", "rgba(255,255,255,.55)").attr("stroke-opacity", 1).attr("stroke-width", .5);
+  },
+
+  setTimer(text) {
+    const el = document.getElementById("build-timer");
+    el.hidden = text == null;
+    if (text != null) el.textContent = text;
+  }
+};
+
+/* ---------------------------------------------------------------------
+   BUILD CONTROLLER — picks the continent + random central seed, holds
+   build session state, and delegates rendering to BuildView. (Dragging,
+   validation, scoring and completion arrive in later slices.)
+   ------------------------------------------------------------------- */
+const Build = {
+  active: false,
+  model: null,
+  session: null,
+  _timerId: null,
+
+  start() {
+    const continent = State.data.settings.region;
+    if (!BuildGraph.SUPPORTED.includes(continent)) {
+      UI.toast("Pick a continent to build.", "bad");
+      return;
+    }
+    // Build over countries that actually have a rendered polygon: a placeable
+    // country with no geometry would have no bank tile and could block both
+    // completion and the unlocking of anything reachable only through it.
+    const graph = BuildGraph.build(DataLayer.countries.filter(c => c.feature), continent);
+    if (!graph.buildable) {
+      UI.toast("That continent can't be built yet.", "bad");
+      return;
+    }
+    const seeds = graph.seedCandidates.length ? graph.seedCandidates : graph.placeable;
+    const seed = seeds[Math.floor(Math.random() * seeds.length)];
+    this.model = { continent, graph, seed, placedIds: new Set([seed.id]), revealedIds: new Set() };
+    this.naming = false;
+    // Scoring accumulator: the running fold of the placement event stream
+    // (snaps + misdrops) into time and mistake totals.
+    this.session = {
+      timed: State.data.settings.timed,
+      startTime: performance.now(), elapsedMs: 0, mistakes: 0,
+      lastEventTime: performance.now()
+    };
+    this.active = true;
+    document.getElementById("build-done-back").classList.remove("show");
+    document.getElementById("build-title").textContent = "Build " + continent;
+    Nav.show("screen-build");
+    BuildView.show(this.model);
+    this._startTimer();
+  },
+
+  // A correct placement: record the verdict for spaced repetition, then check
+  // for completion. A self-placed country (named mode) is a correct verdict;
+  // hint/wrong-name verdicts (CB-6/CB-7) record an incorrect one instead.
+  afterPlace(country) {
+    if (!this.active) return;
+    if (State.data.settings.showNames !== false) {
+      this._recordVerdict(country, true);
+      this._checkComplete();
+    } else {
+      this._promptName(country);
+    }
+  },
+
+  // Unnamed mode: after a correct placement the piece is locked, then the
+  // player names it (one attempt). Right → credit; wrong/skip → reveal the
+  // name, count a miss, leave the piece in place.
+  _promptName(country) {
+    this.naming = true;
+    BuildView.showNamePrompt((typed) => {
+      const correct = Logic.matchAnswer(typed, country.name);
+      this._recordVerdict(country, correct);
+      if (!correct) {
+        this.model.revealedIds.add(country.id);
+        BuildView._redrawPlaced();
+        UI.toast("It's " + country.name, "bad");
+      } else {
+        UI.toast("Correct — " + country.name, "good");
+      }
+      this.naming = false;
+      BuildView.hideNamePrompt();
+      this._checkComplete();
+    });
+  },
+
+  _checkComplete() {
+    if (this.model.placedIds.size >= this.model.graph.placeable.length) this.finish();
+  },
+
+  // A rejected drop is a score mistake only — NOT a Leitner failure. A
+  // self-corrected misdrop must not mark the country wrong for spaced rep.
+  afterMistake() {
+    if (this.session) this.session.mistakes += 1;
+  },
+
+  // Stuck on a piece: reveal its correct spot and place it there. A hint
+  // counts as a mistake and a Leitner failure (it's the unaided-knowledge
+  // signal), and the placed piece anchors its neighbours like any other.
+  hint(country) {
+    if (!this.active || this.model.placedIds.has(country.id)) return;
+    if (!BuildGraph.isUnlocked(country, this.model.placedIds, this.model.graph.adjacency)) {
+      UI.toast("That doesn't border the map yet", "bad");
+      return;
+    }
+    this.model.placedIds.add(country.id);
+    this.session.mistakes += 1;
+    this._recordVerdict(country, false);
+    // In unnamed mode a hint reveals the name as well as the location.
+    if (State.data.settings.showNames === false) {
+      this.model.revealedIds.add(country.id);
+      UI.toast("It's " + country.name, "bad");
+    }
+    BuildView.revealPlace(country);
+    this._checkComplete();
+  },
+
+  // Fold one country's outcome into Leitner + history + stats under the new
+  // `build` mode key, so builds feed mastery, the dashboard and the heatmap
+  // alongside the other modes.
+  _recordVerdict(country, correct) {
+    const now = performance.now();
+    const ms = Math.max(0, Math.round(now - (this.session.lastEventTime || this.session.startTime)));
+    this.session.lastEventTime = now;
+    const key = country.id + ":build";
+    State.data.leitner[key] = Logic.leitnerUpdate(State.data.leitner[key], correct);
+    State.data.history.push({ id: country.id, mode: "build", correct, ms, region: country.region, t: Date.now() });
+    if (State.data.history.length > 1000) State.data.history.splice(0, State.data.history.length - 1000);
+    State.data.stats.answered += 1;
+    if (correct) State.data.stats.correct += 1;
+    State.save();
+  },
+
+  finish() {
+    this.active = false;
+    this._stopTimer();
+    Confetti.burst();
+    Audio2.milestone();
+    const timed = this.session.timed;
+    const n = this.model.graph.placeable.length;
+    document.getElementById("bd-sub").textContent =
+      `You assembled ${this.model.continent} — all ${n} countries.`;
+    const kpis = [];
+    if (timed) kpis.push(`<div class="kpi"><div class="v accent">${Logic.fmtDuration(this.session.elapsedMs)}</div><div class="l">Time</div></div>`);
+    kpis.push(`<div class="kpi"><div class="v warn">${this.session.mistakes}</div><div class="l">Mistakes</div></div>`);
+    kpis.push(`<div class="kpi"><div class="v good">${n}</div><div class="l">Placed</div></div>`);
+    document.getElementById("bd-kpis").innerHTML = kpis.join("");
+    document.getElementById("build-done-back").classList.add("show");
+  },
+
+  // Session stopwatch, mirroring the quiz: always tracked, shown only when the
+  // session-timer toggle is on. Build at your own pace either way.
+  _startTimer() {
+    this._stopTimer();
+    BuildView.setTimer(this.session.timed ? Logic.fmtDuration(0) : null);
+    const tick = () => {
+      this.session.elapsedMs = performance.now() - this.session.startTime;
+      if (this.session.timed) BuildView.setTimer(Logic.fmtDuration(this.session.elapsedMs));
+    };
+    this._timerId = setInterval(tick, 500);
+  },
+  _stopTimer() {
+    if (this.session) this.session.elapsedMs = performance.now() - this.session.startTime;
+    if (this._timerId) { clearInterval(this._timerId); this._timerId = null; }
+  },
+
+  quit() {
+    this.active = false;
+    this._stopTimer();
+    UI.returnToMenu();
+  }
+};
+
+/* ---------------------------------------------------------------------
    QUIZ CONTROLLER — mode-agnostic loop over 5 modes
    ------------------------------------------------------------------- */
 const Quiz = {
@@ -1111,8 +2073,7 @@ const Quiz = {
   current: null,   // {item, mode, options, ...}
   answered: false,
   qStartTime: 0,
-  timerId: null,
-  timeLeft: 0,
+  sessionTimerId: null,
   borderState: null, // for border mode
 
   pool() {
@@ -1127,31 +2088,53 @@ const Quiz = {
 
   start() {
     const s = State.data.settings;
+    s.modes = Logic.sanitizeModes(s.modes);
+    // Build is its own screen + controller, not a question loop.
+    if (MODES[s.modes[0]] && MODES[s.modes[0]].group === "build") { Build.start(); return; }
     const pool = this.pool();
     if (pool.length < 4) {
       UI.toast("Pick a broader region — need at least 4 countries.", "bad");
       return;
     }
+    const screen = this.screenFor(this.activeModes());
     this.active = true;
     this.session = {
-      type: s.session,
+      type: s.session, screen,
       total: s.session === "round" ? s.roundLen : Infinity,
       timed: s.timed,
       asked: 0, score: 0, streak: 0, bestStreak: 0,
-      correct: 0, log: []
+      correct: 0, log: [],
+      askedIds: new Set(),   // every item asked this run — used to avoid repeats
+      startTime: 0, elapsedMs: 0
     };
-    document.getElementById("scorebar").classList.toggle("timed", s.timed);
+    if (screen === "map") {
+      Nav.show("screen-map");
+      MapView.ensure(() => this._begin());
+    } else {
+      Nav.show("screen-quiz");
+      this._begin();
+    }
+  },
+
+  // All active modes belong to the same group (enforced by sanitizeModes), so
+  // the screen is decided by whether that group is the map group.
+  screenFor(modes) {
+    return modes.every(m => MODES[m] && MODES[m].group === "map") ? "map" : "quiz";
+  },
+
+  _begin() {
+    document.getElementById("scorebar").classList.toggle("timed", this.session.timed);
+    this.session.startTime = performance.now();
+    this._startSessionTimer();
+    UI.showScorebar();
     UI.updateScorebar();
     this.next();
   },
 
-  stop() {
+  quit() {
     this.active = false;
-    this._clearTimer();
-    UI.hideHud();
-    UI.hideReveal();
-    MapView.clearHighlights();
-    MapView.setLabelsAllowed(true);
+    this._stopSessionTimer();
+    UI.returnToMenu();
   },
 
   next() {
@@ -1159,68 +2142,70 @@ const Quiz = {
     this.answered = false;
     this.borderState = null;
     UI.hideReveal();
-    MapView.clearHighlights();
+    if (this.session.screen === "map" && MapView._inited) MapView.clearHighlights();
 
     if (this.session.asked >= this.session.total) { this.finish(); return; }
 
     const modes = this.activeModes();
     const mode = modes[Math.floor(Math.random() * modes.length)];
     const pool = this.pool();
-    const mapMode = MODES[mode].map; // find / name / border need clickable geometry
+    const leit = State.data.leitner;
+    const avoidId = this.current && this.current.item ? this.current.item.id : null;
+    const exclude = this.session.askedIds;
 
-    // Map modes must target a country with a rendered polygon; capital/flag may
-    // target any country (incl. microstates the 50m file omits).
     let item;
-    if (mode === "border") {
-      // Target must have geometry AND at least one neighbour that also has
-      // geometry within the active pool (so every required click is reachable).
-      const mapPool = Logic.mapPool(pool);
-      const borderPool = mapPool.filter(c =>
-        c.neighbours.some(n => Logic.hasMapGeometry(n) && pool.includes(n)));
-      if (!borderPool.length) return this._retryDifferentMode(mode);
-      item = Logic.selectNextItem(borderPool, State.data.leitner, mode, { avoidId: this.current && this.current.item.id });
-    } else if (mapMode) {
-      const mapPool = Logic.mapPool(pool);
-      if (!mapPool.length) return this._retryDifferentMode(mode);
-      item = Logic.selectNextItem(mapPool, State.data.leitner, mode, { avoidId: this.current && this.current.item.id });
-    } else {
-      item = Logic.selectNextItem(pool, State.data.leitner, mode, { avoidId: this.current && this.current.item.id });
+    if (mode === "find" || mode === "name") {
+      const mp = Logic.mapPool(pool);
+      if (!mp.length) return this._retryDifferentMode(mode);
+      item = Logic.selectNextItem(mp, leit, mode, { avoidId, exclude });
+    } else if (mode === "capital") {
+      const cp = pool.filter(c => c.capital && c.capital !== "—");
+      if (!cp.length) return this._retryDifferentMode(mode);
+      item = Logic.selectNextItem(cp, leit, mode, { avoidId, exclude });
+    } else if (mode === "flag") {
+      const fp = pool.filter(c => c.cca2);
+      if (!fp.length) return this._retryDifferentMode(mode);
+      item = Logic.selectNextItem(fp, leit, mode, { avoidId, exclude });
+    } else if (mode === "border") {
+      const bp = pool.filter(c => c.neighbours.some(n => pool.includes(n)));
+      if (!bp.length) return this._retryDifferentMode(mode);
+      item = Logic.selectNextItem(bp, leit, mode, { avoidId, exclude });
     }
     if (!item) { this.finish(); return; }
 
     this.current = { item, mode };
+    this.session.askedIds.add(item.id);
     this.qStartTime = performance.now();
     this.session.asked += 1;
 
-    // Map labels hidden during find & name (so it's not trivial). Visible-ish for capital/flag.
-    MapView.setLabelsAllowed(mode === "capital" || mode === "flag");
+    if (mode === "border") this._buildBorderState(item, pool);
 
     UI.renderQuestion(this.current);
 
-    if (mode === "find" || mode === "border" || mode === "name") {
-      // auto-frame microstate / region targets so they're reachable
-      if (mode === "border") {
-        MapView.frameCountry(item, 0.55);
-        MapView.paint(item.id, "target");
-        this.borderState = {
-          // Only neighbours that are both in the active pool AND have clickable
-          // geometry count toward the required set (the rest aren't selectable).
-          required: new Set(item.neighbours
-            .filter(n => pool.includes(n) && Logic.hasMapGeometry(n))
-            .map(n => n.id)),
-          clicked: new Set(), wrong: new Set()
-        };
-      } else if (mode === "name") {
-        // highlight the mystery country; player picks the name from MC
-        if (MapView.tinyIds.has(item.id)) MapView.frameCountry(item, 0.5);
-        MapView.paint(item.id, "target");
-      } else if (mode === "find") {
-        if (MapView.tinyIds.has(item.id)) MapView.frameCountry(item, 0.5);
-      }
+    // Map framing only for the two map modes.
+    if (mode === "find") {
+      if (MapView.tinyIds.has(item.id)) MapView.frameCountry(item, 0.5);
+    } else if (mode === "name") {
+      if (MapView.tinyIds.has(item.id)) MapView.frameCountry(item, 0.5);
+      MapView.paint(item.id, "target");
     }
 
-    if (this.session.timed) this._startTimer();
     UI.updateScorebar();
+  },
+
+  // Border (expert) candidate set: the real neighbours in-pool plus distractors
+  // (same-region preferred) to roughly double the option count.
+  _buildBorderState(item, pool) {
+    const required = new Set(item.neighbours.filter(n => pool.includes(n)).map(n => n.id));
+    const reqObjs = item.neighbours.filter(n => pool.includes(n));
+    const nonNeighbours = pool.filter(c => c.id !== item.id && !required.has(c.id));
+    const sameR = Logic._shuffle(nonNeighbours.filter(c => c.region === item.region));
+    const otherR = Logic._shuffle(nonNeighbours.filter(c => c.region !== item.region));
+    const total = Math.max(8, required.size * 2);
+    const distractors = [];
+    while (distractors.length < total - required.size && sameR.length) distractors.push(sameR.pop());
+    while (distractors.length < total - required.size && otherR.length) distractors.push(otherR.pop());
+    this.borderState = { required, candidates: Logic._shuffle(reqObjs.concat(distractors)) };
   },
 
   _retryDifferentMode(badMode) {
@@ -1234,39 +2219,46 @@ const Quiz = {
     State.data.settings.modes = saved;
   },
 
-  // Handle a map click during find/name/border modes.
+  // Handle a map click during find mode (name is answered via MC).
   handleMapSelect(country) {
-    if (!this.active || this.answered) {
+    const mapAnswer = this.active && !this.answered && this.current
+      && MODES[this.current.mode].group === "map";
+    if (!mapAnswer) {
       MapView.flashSelect(country.id);
       UI.showQuickInfo(country);
       return;
     }
-    const mode = this.current.mode;
-    if (mode === "find") {
+    if (this.current.mode === "find") {
       const correct = country.id === this.current.item.id;
       MapView.paint(country.id, correct ? "good" : "bad");
       if (!correct) MapView.paint(this.current.item.id, "target");
       this.grade(correct);
-    } else if (mode === "border") {
-      const bs = this.borderState;
-      if (country.id === this.current.item.id) return; // ignore the target itself
-      if (bs.required.has(country.id)) {
-        if (!bs.clicked.has(country.id)) { bs.clicked.add(country.id); MapView.paint(country.id, "good"); Audio2.correct(); }
-      } else {
-        bs.wrong.add(country.id); MapView.paint(country.id, "bad"); Audio2.wrong();
-      }
-      UI.updateBorderProgress(bs);
     }
     // 'name' mode is answered via MC buttons, not map clicks.
   },
 
-  submitBorder() {
-    if (this.answered || this.current.mode !== "border") return;
+  // Expert: typed answer (capital → capital name, flag → country name).
+  handleTyped(value) {
+    if (!this.active || this.answered) return;
+    const { item, mode } = this.current;
+    const answer = mode === "capital" ? item.capital : item.name;
+    this.grade(Logic.matchAnswer(value, answer), { typed: value });
+  },
+
+  // Expert: "select all that border X" grid submission.
+  submitBorderExpert(selectedIds) {
+    if (!this.active || this.answered || this.current.mode !== "border") return;
     const bs = this.borderState;
-    const missing = [...bs.required].filter(id => !bs.clicked.has(id));
-    const correct = missing.length === 0 && bs.wrong.size === 0;
-    missing.forEach(id => MapView.paint(id, "target"));
-    this.grade(correct, { missing, wrong: [...bs.wrong] });
+    const sel = new Set(selectedIds);
+    const missing = [...bs.required].filter(id => !sel.has(id));
+    const wrong = [...sel].filter(id => !bs.required.has(id));
+    const correct = missing.length === 0 && wrong.length === 0;
+    document.querySelectorAll("#eq-controls .bsel").forEach(b => {
+      const id = b.dataset.id; b.disabled = true;
+      if (bs.required.has(id)) b.classList.add(sel.has(id) ? "correct" : "missed");
+      else if (sel.has(id)) b.classList.add("wrong");
+    });
+    this.grade(correct, { missing, wrong });
   },
 
   // Handle a multiple-choice answer.
@@ -1284,7 +2276,6 @@ const Quiz = {
   grade(correct, extra = {}) {
     if (this.answered) return;
     this.answered = true;
-    this._clearTimer();
     const ms = Math.round(performance.now() - this.qStartTime);
     const { item, mode } = this.current;
 
@@ -1304,7 +2295,6 @@ const Quiz = {
       this.session.correct += 1;
       this.session.streak += 1;
       let pts = 100;
-      if (this.session.timed) pts += Math.round((this.timeLeft / TIMED_SECONDS) * 80);
       pts += Math.min(60, this.session.streak * 6); // streak bonus
       this.session.score += pts;
       this.session.bestStreak = Math.max(this.session.bestStreak, this.session.streak);
@@ -1326,7 +2316,7 @@ const Quiz = {
     if (State.data.stats.streakHistory.length > 200) State.data.stats.streakHistory.splice(0, State.data.stats.streakHistory.length - 200);
 
     State.save();
-    if (State.data.settings.heatmap) MapView.refreshColors();
+    if (State.data.settings.heatmap && this.session.screen === "map" && MapView._inited) MapView.refreshColors();
     UI.updateScorebar();
     UI.showReveal(item, correct, ms, mode, extra);
   },
@@ -1338,40 +2328,37 @@ const Quiz = {
 
   finish() {
     this.active = false;
-    this._clearTimer();
+    this._stopSessionTimer();
     UI.hideHud();
     UI.hideReveal();
-    MapView.clearHighlights();
-    MapView.reset();
-    MapView.setLabelsAllowed(true);
+    if (this.session.screen === "map" && MapView._inited) { MapView.clearHighlights(); MapView.reset(); }
     if (this.session.type === "round") {
       Confetti.burst();
       UI.showResults(this.session);
     } else {
-      UI.toast("Endless session ended.", "good");
+      UI.toast("Endless session ended in " + Logic.fmtDuration(this.session.elapsedMs), "good");
+      UI.returnToMenu();
     }
   },
 
-  /* timed mode */
-  _startTimer() {
-    this.timeLeft = TIMED_SECONDS;
-    document.getElementById("sb-timer").textContent = this.timeLeft;
-    this.timerId = setInterval(() => {
-      this.timeLeft -= 1;
-      document.getElementById("sb-timer").textContent = Math.max(0, this.timeLeft);
-      if (this.timeLeft <= 0) {
-        this._clearTimer();
-        if (!this.answered) {
-          if (this.current.mode === "border") this.submitBorder();
-          else {
-            MapView.paint(this.current.item.id, "target");
-            this.grade(false);
-          }
-        }
+  // Session stopwatch: counts up for the whole run (no per-question limit).
+  // Answer at your own pace; we just report how long the session took.
+  _startSessionTimer() {
+    this._stopSessionTimer();
+    const tick = () => {
+      this.session.elapsedMs = performance.now() - this.session.startTime;
+      if (this.session.timed) {
+        const el = document.getElementById("sb-timer");
+        if (el) el.textContent = Logic.fmtDuration(this.session.elapsedMs);
       }
-    }, 1000);
+    };
+    tick();
+    this.sessionTimerId = setInterval(tick, 500);
   },
-  _clearTimer() { if (this.timerId) { clearInterval(this.timerId); this.timerId = null; } }
+  _stopSessionTimer() {
+    if (this.session) this.session.elapsedMs = performance.now() - this.session.startTime;
+    if (this.sessionTimerId) { clearInterval(this.sessionTimerId); this.sessionTimerId = null; }
+  }
 };
 
 /* ---------------------------------------------------------------------
@@ -1390,31 +2377,86 @@ const UI = {
 
   /* --- control panel --- */
   _buildModeChips() {
-    const host = this.$("mode-chips");
-    host.innerHTML = "";
+    const hosts = {
+      map: this.$("modes-map"),
+      expert: this.$("modes-expert"),
+      build: this.$("modes-build")
+    };
+    Object.values(hosts).forEach(h => { h.innerHTML = ""; });
     Object.values(MODES).forEach(m => {
       const chip = document.createElement("button");
-      chip.className = "chip" + (State.data.settings.modes.includes(m.id) ? " on" : "");
+      chip.className = "chip";
       chip.textContent = m.label;
       chip.dataset.mode = m.id;
-      chip.onclick = () => {
-        const set = new Set(State.data.settings.modes);
-        if (set.has(m.id)) { if (set.size > 1) set.delete(m.id); }
-        else set.add(m.id);
-        State.data.settings.modes = [...set];
-        chip.classList.toggle("on", set.has(m.id));
-        State.save();
-      };
-      host.appendChild(chip);
+      chip.onclick = () => this._toggleMode(m.id);
+      (hosts[m.group] || hosts.expert).appendChild(chip);
     });
+    this._reflectModeChips();
+  },
+
+  // Map and expert modes are mutually exclusive in a session (they route to
+  // different screens), so picking from one group clears the other.
+  _toggleMode(id) {
+    const set = new Set(State.data.settings.modes);
+    const grp = MODES[id].group;
+    const curGrp = set.size ? MODES[[...set][0]].group : grp;
+    if (curGrp !== grp) set.clear();
+    if (set.has(id)) { if (set.size > 1) set.delete(id); }
+    else set.add(id);
+    State.data.settings.modes = [...set];
+    this._reflectModeChips();
+    this._reflectModeContext();
+    State.save();
+  },
+
+  _reflectModeChips() {
+    const on = new Set(State.data.settings.modes);
+    document.querySelectorAll("#modes-map .chip, #modes-expert .chip, #modes-build .chip").forEach(c =>
+      c.classList.toggle("on", on.has(c.dataset.mode)));
+  },
+
+  // The active mode group is the one all selected modes share (enforced by
+  // sanitizeModes). Build mode reshapes the menu: a single supported continent
+  // is required (no "All", no Oceania) and the round-length / endless controls
+  // are hidden, since a build has no question count.
+  _currentGroup() {
+    const m = State.data.settings.modes.filter(id => MODES[id]);
+    return m.length ? MODES[m[0]].group : "map";
+  },
+
+  _reflectModeContext() {
+    const isBuild = this._currentGroup() === "build";
+    this.$("sec-subregion").style.display = isBuild ? "none" : "";
+    this.$("seg-session").style.display = isBuild ? "none" : "";
+    this.$("round-len-row").style.display = isBuild ? "none" : "";
+    this.$("row-shownames").style.display = isBuild ? "" : "none";
+    this.$("btn-start").textContent = isBuild ? "Build continent ▸" : "Start session ▸";
+    if (isBuild) {
+      if (!BuildGraph.SUPPORTED.includes(State.data.settings.region)) {
+        State.data.settings.region = BuildGraph.SUPPORTED[0];
+      }
+      const r = this.$("filter-region");
+      r.innerHTML = BuildGraph.SUPPORTED.map(c => `<option value="${c}">${c}</option>`).join("");
+      r.value = State.data.settings.region;
+    } else {
+      this._populateRegionsFull();
+      this._buildSubregionFilter();
+    }
+  },
+
+  _populateRegionsFull() {
+    const regions = Array.from(new Set(DataLayer.countries.map(c => c.region))).sort();
+    const rSel = this.$("filter-region");
+    const cur = State.data.settings.region;
+    rSel.innerHTML = '<option value="all">All continents</option>' +
+      regions.map(r => `<option value="${r}">${r}</option>`).join("");
+    rSel.value = (cur === "all" || regions.includes(cur)) ? cur : "all";
+    State.data.settings.region = rSel.value;
   },
 
   _buildRegionFilters() {
-    const regions = Array.from(new Set(DataLayer.countries.map(c => c.region))).sort();
+    this._populateRegionsFull();
     const rSel = this.$("filter-region");
-    rSel.innerHTML = '<option value="all">All continents</option>' +
-      regions.map(r => `<option value="${r}">${r}</option>`).join("");
-    rSel.value = State.data.settings.region;
     rSel.onchange = () => {
       State.data.settings.region = rSel.value;
       State.data.settings.subregion = "all";
@@ -1452,23 +2494,25 @@ const UI = {
     });
     this.$("round-len").onchange = e => { State.data.settings.roundLen = +e.target.value; State.save(); };
     this.$("opt-timed").onchange = e => { State.data.settings.timed = e.target.checked; State.save(); };
+    this.$("opt-shownames").onchange = e => { State.data.settings.showNames = e.target.checked; State.save(); };
 
     this.$("btn-start").onclick = () => { Audio2.ensure(); Quiz.start(); };
 
-    // topbar
-    this.$("btn-panel").onclick = () => this.$("panel").classList.toggle("collapsed");
-    this.$("btn-heatmap").onclick = () => this._toggleHeatmap();
-    this.$("btn-sound").onclick = () => this._toggleSound();
-    this.$("btn-stats").onclick = () => this.showStats();
+    // per-screen controls (back / heatmap / sound appear on multiple screens)
+    document.querySelectorAll("[data-back]").forEach(b => b.onclick = () => Quiz.quit());
+    document.querySelectorAll(".heatmap-btn").forEach(b => b.onclick = () => this._toggleHeatmap());
+    document.querySelectorAll(".sound-btn").forEach(b => b.onclick = () => this._toggleSound());
 
-    // export / import / reset
+    this.$("btn-stats").onclick = () => this.showStats();
     this.$("btn-export").onclick = () => this._export();
     this.$("btn-import").onclick = () => this.$("import-file").click();
     this.$("import-file").onchange = e => this._import(e.target.files[0]);
     this.$("btn-reset").onclick = () => {
       if (confirm("Reset all progress and settings?")) {
         State.reset(); this._applySettingsToUI(); this._buildModeChips();
-        this._buildRegionFilters(); MapView.refreshColors(); this.updateScorebar();
+        this._buildRegionFilters();
+        if (MapView._inited) MapView.refreshColors();
+        this.updateScorebar();
         this.toast("Progress reset.", "good");
       }
     };
@@ -1476,22 +2520,27 @@ const UI = {
     // reveal next
     this.$("rv-next").onclick = () => Quiz.next();
 
-    // modal close buttons
+    // modal close buttons → back to the menu
     document.querySelectorAll("[data-close]").forEach(b => {
-      b.onclick = () => this.$(b.dataset.close).classList.remove("show");
+      b.onclick = () => { this.$(b.dataset.close).classList.remove("show"); this.returnToMenu(); };
     });
     this.$("res-again").onclick = () => { this.$("results-back").classList.remove("show"); Quiz.start(); };
     this.$("res-stats").onclick = () => { this.$("results-back").classList.remove("show"); this.showStats(); };
+    this.$("res-menu").onclick = () => { this.$("results-back").classList.remove("show"); this.returnToMenu(); };
+
+    // build completion modal
+    this.$("bd-again").onclick = () => { this.$("build-done-back").classList.remove("show"); Build.start(); };
+    this.$("bd-menu").onclick = () => { this.$("build-done-back").classList.remove("show"); this.returnToMenu(); };
   },
 
   _wireKeys() {
     window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { MapView.reset(); }
-      else if (e.key === "Tab" && !e.target.matches("input,select")) {
-        e.preventDefault(); this.$("panel").classList.toggle("collapsed");
+      if (e.key === "Escape") {
+        if (this.$("screen-map").classList.contains("active") && MapView._inited) MapView.reset();
+        else if (this.$("screen-build").classList.contains("active")) BuildView.resetZoom();
       } else if (e.key === "Enter" && Quiz.answered && this.$("reveal").classList.contains("show")) {
         Quiz.next();
-      } else if (/^[1-4]$/.test(e.key) && !Quiz.answered) {
+      } else if (/^[1-4]$/.test(e.key) && !Quiz.answered && !e.target.matches("input")) {
         const btns = document.querySelectorAll("#q-controls .choice");
         const b = btns[+e.key - 1]; if (b) b.click();
       }
@@ -1505,16 +2554,24 @@ const UI = {
     this.$("round-len").value = s.roundLen;
     this.$("round-len-row").style.opacity = s.session === "round" ? "1" : ".4";
     this.$("opt-timed").checked = s.timed;
-    this.$("btn-heatmap").classList.toggle("active", s.heatmap);
+    this.$("opt-shownames").checked = s.showNames !== false;
+    this._reflectModeChips();
+    this._reflectModeContext();
+    this._reflectHeatmap();
     this._reflectSound();
+  },
+
+  _reflectHeatmap() {
+    const on = State.data.settings.heatmap;
+    document.querySelectorAll(".heatmap-btn").forEach(b => b.classList.toggle("active", on));
   },
 
   _toggleHeatmap() {
     const s = State.data.settings;
     s.heatmap = !s.heatmap;
-    this.$("btn-heatmap").classList.toggle("active", s.heatmap);
+    this._reflectHeatmap();
     State.save();
-    MapView.refreshColors();
+    if (MapView._inited) MapView.refreshColors();
     this.toast(s.heatmap ? "Mastery heatmap on" : "Heatmap off");
   },
 
@@ -1527,10 +2584,29 @@ const UI = {
   },
   _reflectSound() {
     const on = State.data.settings.sound;
-    const b = this.$("btn-sound");
-    b.textContent = on ? "🔊" : "🔇";
-    b.classList.toggle("active", on);
-    b.title = "Sound (" + (on ? "on" : "off") + ")";
+    document.querySelectorAll(".sound-btn").forEach(b => {
+      b.textContent = on ? "🔊" : "🔇";
+      b.classList.toggle("active", on);
+      b.title = "Sound (" + (on ? "on" : "off") + ")";
+    });
+  },
+
+  showScorebar() { this.$("scorebar").classList.add("visible"); },
+  hideScorebar() { this.$("scorebar").classList.remove("visible"); },
+
+  returnToMenu() {
+    Quiz.active = false;
+    Quiz.session = null;
+    Quiz.current = null;
+    Build.active = false;
+    Build._stopTimer();
+    this.$("build-done-back").classList.remove("show");
+    this.hideHud();
+    this.hideReveal();
+    this.hideScorebar();
+    if (MapView._inited) MapView.clearHighlights();
+    this.updateScorebar();
+    Nav.show("screen-menu");
   },
 
   /* --- scorebar --- */
@@ -1548,15 +2624,24 @@ const UI = {
   },
 
   /* --- question rendering --- */
+  _progressText() {
+    return Quiz.session.type === "round"
+      ? `${Quiz.session.asked} / ${Quiz.session.total}`
+      : `Q${Quiz.session.asked} · endless`;
+  },
+
   renderQuestion(cur) {
+    if (MODES[cur.mode].group === "map") this.renderMapQuestion(cur);
+    else this.renderExpertQuestion(cur);
+  },
+
+  /* --- map screen (find / name) --- */
+  renderMapQuestion(cur) {
     const { item, mode } = cur;
     const hud = this.$("hud");
     hud.classList.remove("hidden");
     this.$("q-mode").textContent = MODES[mode].label;
-    const prog = Quiz.session.type === "round"
-      ? `${Quiz.session.asked} / ${Quiz.session.total}`
-      : `Q${Quiz.session.asked} · endless`;
-    this.$("q-progress").textContent = prog;
+    this.$("q-progress").textContent = this._progressText();
 
     const body = this.$("q-body");
     const controls = this.$("q-controls");
@@ -1565,47 +2650,99 @@ const UI = {
     if (mode === "find") {
       body.innerHTML = `<div class="q-prompt">Find <span class="em">${item.name}</span> on the map</div>
         <div class="q-sub">Click the country (zoom in for small ones)</div>`;
-    } else if (mode === "capital") {
-      body.innerHTML = `<div class="q-prompt">What is the capital of <span class="em">${item.name}</span>?</div>`;
-      this._renderCapitalChoices(item, controls);
-    } else if (mode === "flag") {
-      body.innerHTML = `<div class="q-flag-prompt">
-          <img id="q-flag-img" alt="flag" src="${item.flagSvg}">
-          <div><div class="q-prompt">Which country?</div>
-          <div class="q-sub">Identify the flag</div></div></div>`;
-      const img = body.querySelector("#q-flag-img");
-      img.onerror = () => { img.replaceWith(Object.assign(document.createElement("div"),
-        { className: "rv-flag-ph", style: "width:96px;height:64px", textContent: "🏳" })); };
-      this._renderCountryChoices(item, controls);
     } else if (mode === "name") {
       body.innerHTML = `<div class="q-prompt">Name the <span class="em">highlighted</span> country</div>
         <div class="q-sub">It's glowing on the map</div>`;
       this._renderCountryChoices(item, controls);
-    } else if (mode === "border") {
-      body.innerHTML = `<div class="q-prompt">Click every country bordering <span class="em">${item.name}</span></div>
-        <div class="q-sub" id="border-prog">0 / ${Quiz.borderState ? "" : ""}</div>`;
-      const actions = document.createElement("div");
-      actions.className = "map-actions";
-      actions.innerHTML = `<button class="btn ghost" id="border-skip">No neighbours / skip</button>
-        <button class="btn" id="border-submit">Submit answer</button>`;
-      controls.appendChild(actions);
-      controls.querySelector("#border-submit").onclick = () => Quiz.submitBorder();
-      controls.querySelector("#border-skip").onclick = () => Quiz.submitBorder();
-      // set initial count after borderState exists (next() sets it just after render in find/border path)
-      setTimeout(() => this.updateBorderProgress(Quiz.borderState), 0);
     }
   },
 
-  _renderCapitalChoices(item, host) {
-    const opts = Logic.makeChoices(item, Quiz.pool(), 4);
-    const grid = document.createElement("div"); grid.className = "choices";
-    opts.forEach(o => {
+  /* --- expert screen (capital / flag / border) --- */
+  renderExpertQuestion(cur) {
+    const { item, mode } = cur;
+    this.$("eq-mode").textContent = MODES[mode].label;
+    this.$("eq-progress").textContent = this._progressText();
+    const body = this.$("eq-body");
+    const controls = this.$("eq-controls");
+    body.innerHTML = ""; controls.innerHTML = "";
+
+    if (mode === "capital") {
+      body.innerHTML = `<div class="q-prompt">What is the capital of <span class="em">${item.name}</span>?</div>
+        <div class="q-sub">Type the city name</div>`;
+      const caps = [...new Set(Quiz.pool().filter(c => c.capital && c.capital !== "—").map(c => c.capital))];
+      this._buildAutocomplete(controls, caps, v => Quiz.handleTyped(v));
+    } else if (mode === "flag") {
+      body.innerHTML = `<img class="eq-flag" id="eq-flag-img" alt="flag" src="${item.flagSvg}">
+        <div class="q-prompt" style="text-align:center">Which country's flag is this?</div>
+        <div class="q-sub" style="text-align:center">Type the country name</div>`;
+      const img = body.querySelector("#eq-flag-img");
+      img.onerror = () => { img.replaceWith(Object.assign(document.createElement("div"),
+        { className: "rv-flag-ph", style: "width:180px;height:120px;margin:0 auto 12px", textContent: "🏳" })); };
+      const names = [...new Set(Quiz.pool().map(c => c.name))];
+      this._buildAutocomplete(controls, names, v => Quiz.handleTyped(v));
+    } else if (mode === "border") {
+      body.innerHTML = `<div class="q-prompt">Select every country that borders <span class="em">${item.name}</span></div>
+        <div class="q-sub">Tap all its neighbours, then submit</div>`;
+      this._renderBorderGrid(controls);
+    }
+  },
+
+  // Typed answer with a filtered suggestion list. onSubmit(value) is called on
+  // Enter, clicking a suggestion, or the Submit button; Skip submits "".
+  _buildAutocomplete(host, candidates, onSubmit) {
+    const wrap = document.createElement("div"); wrap.className = "ac";
+    const input = document.createElement("input");
+    input.className = "ac-input"; input.type = "text";
+    input.autocomplete = "off"; input.spellcheck = false;
+    input.placeholder = "Type your answer…";
+    const list = document.createElement("div"); list.className = "ac-list"; list.hidden = true;
+    wrap.appendChild(input); wrap.appendChild(list);
+    host.appendChild(wrap);
+
+    const actions = document.createElement("div"); actions.className = "map-actions";
+    actions.innerHTML = `<button class="btn ghost" data-skip>Skip</button><button class="btn" data-submit>Submit</button>`;
+    host.appendChild(actions);
+
+    let items = [], active = -1;
+    const render = () => {
+      items = Logic.suggest(input.value, candidates, 6);
+      if (!items.length) { list.hidden = true; list.innerHTML = ""; active = -1; return; }
+      list.innerHTML = items.map((c, i) =>
+        `<div class="ac-opt${i === active ? " active" : ""}" data-i="${i}">${c}</div>`).join("");
+      list.hidden = false;
+    };
+    const submit = (val) => { list.hidden = true; onSubmit(val); };
+
+    input.addEventListener("input", () => { active = -1; render(); });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") { e.preventDefault(); if (items.length) { active = (active + 1) % items.length; render(); } }
+      else if (e.key === "ArrowUp") { e.preventDefault(); if (items.length) { active = (active - 1 + items.length) % items.length; render(); } }
+      else if (e.key === "Enter") { e.preventDefault(); submit(active >= 0 && items[active] ? items[active] : input.value); }
+    });
+    list.addEventListener("click", (e) => {
+      const o = e.target.closest(".ac-opt"); if (o) submit(items[+o.dataset.i]);
+    });
+    actions.querySelector("[data-submit]").onclick = () => submit(input.value);
+    actions.querySelector("[data-skip]").onclick = () => submit("");
+    setTimeout(() => input.focus(), 60);
+  },
+
+  _renderBorderGrid(host) {
+    const bs = Quiz.borderState;
+    const grid = document.createElement("div"); grid.className = "border-grid";
+    bs.candidates.forEach(c => {
       const b = document.createElement("button");
-      b.className = "choice"; b.textContent = o.capital;
-      b.onclick = () => Quiz.handleChoice(o, b);
+      b.className = "bsel"; b.textContent = c.name; b.dataset.id = c.id;
+      b.onclick = () => { if (!Quiz.answered) b.classList.toggle("sel"); };
       grid.appendChild(b);
     });
     host.appendChild(grid);
+    const actions = document.createElement("div"); actions.className = "map-actions";
+    actions.innerHTML = `<button class="btn ghost" data-skip>None / skip</button><button class="btn" data-submit>Submit</button>`;
+    host.appendChild(actions);
+    const collect = () => [...grid.querySelectorAll(".bsel.sel")].map(b => b.dataset.id);
+    actions.querySelector("[data-submit]").onclick = () => Quiz.submitBorderExpert(collect());
+    actions.querySelector("[data-skip]").onclick = () => Quiz.submitBorderExpert([]);
   },
 
   _renderCountryChoices(item, host) {
@@ -1629,13 +2766,6 @@ const UI = {
       }
     });
     if (!correct) btn.classList.add("wrong");
-  },
-
-  updateBorderProgress(bs) {
-    if (!bs) return;
-    const el = this.$("border-prog");
-    if (el) el.textContent = `${bs.clicked.size} / ${bs.required.size} found` +
-      (bs.wrong.size ? ` · ${bs.wrong.size} wrong` : "");
   },
 
   /* --- reveal feedback --- */
@@ -1687,12 +2817,16 @@ const UI = {
   showResults(session) {
     const acc = session.asked ? Math.round((session.correct / session.asked) * 100) : 0;
     this.$("res-title").textContent = acc >= 80 ? "Brilliant round! 🎉" : acc >= 50 ? "Nice work! 👏" : "Keep practising! 💪";
-    this.$("res-sub").textContent = `${session.correct} of ${session.asked} correct`;
+    this.$("res-sub").textContent = `${session.correct} of ${session.asked} correct`
+      + (session.timed ? ` · ${Logic.fmtDuration(session.elapsedMs)}` : "");
+    const timeKpi = session.timed
+      ? `<div class="kpi"><div class="v accent">${Logic.fmtDuration(session.elapsedMs)}</div><div class="l">Time</div></div>`
+      : "";
     this.$("res-kpis").innerHTML = `
       <div class="kpi"><div class="v accent">${session.score}</div><div class="l">Score</div></div>
       <div class="kpi"><div class="v good">${acc}%</div><div class="l">Accuracy</div></div>
       <div class="kpi"><div class="v warn">${session.bestStreak}</div><div class="l">Best streak</div></div>
-      <div class="kpi"><div class="v">${session.asked}</div><div class="l">Questions</div></div>`;
+      <div class="kpi"><div class="v">${session.asked}</div><div class="l">Questions</div></div>${timeKpi}`;
     // weakest from this round
     const misses = session.log || [];
     this.$("res-weak").innerHTML = "";
@@ -1788,10 +2922,22 @@ const UI = {
 };
 
 /* ---------------------------------------------------------------------
+   NAVIGATION — single-screen-at-a-time switching
+   ------------------------------------------------------------------- */
+const Nav = {
+  current: "screen-menu",
+  show(id) {
+    document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
+    this.current = id;
+  }
+};
+
+/* ---------------------------------------------------------------------
    BOOTSTRAP
    ------------------------------------------------------------------- */
 async function boot() {
   State.load();
+  State.data.settings.modes = Logic.sanitizeModes(State.data.settings.modes);
   const loader = document.getElementById("loader");
   const setMsg = (m) => { document.getElementById("load-msg").textContent = m; };
   const showError = () => {
@@ -1805,12 +2951,9 @@ async function boot() {
     await DataLayer.load(setMsg);
     if (!DataLayer.countries.length) throw new Error("empty dataset");
     Confetti.init();
-    MapView.init();
-    MapView.render();
-    MapView.onSelect = (c) => Quiz.handleMapSelect(c);
     UI.init();
-    if (State.data.settings.heatmap) MapView.refreshColors();
     UI.updateScorebar();
+    Nav.show("screen-menu");
     loader.classList.add("gone");
   } catch (err) {
     console.warn("Boot failed:", err);
@@ -1828,7 +2971,7 @@ document.getElementById("btn-retry").addEventListener("click", () => {
 
 /* expose pure logic + key modules for headless testing */
 window.GEO = {
-  Logic, State, DataLayer, MapView, Quiz, MODES,
+  Logic, BuildGraph, Placement, State, DataLayer, MapView, BuildView, Build, Quiz, MODES,
   // convenience for tests:
   get countries() { return DataLayer.countries; }
 };
@@ -1849,8 +2992,10 @@ UI._import = function (file) {
   reader.onload = () => {
     try {
       State.importState(reader.result);
+      State.data.settings.modes = Logic.sanitizeModes(State.data.settings.modes);
       UI._applySettingsToUI(); UI._buildModeChips(); UI._buildRegionFilters();
-      MapView.refreshColors(); UI.updateScorebar();
+      if (MapView._inited) MapView.refreshColors();
+      UI.updateScorebar();
       UI.toast("Progress imported.", "good");
     } catch (e) { UI.toast("Invalid backup file.", "bad"); }
   };
