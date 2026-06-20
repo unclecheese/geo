@@ -1,0 +1,150 @@
+import { create } from "zustand";
+import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
+import { Logic } from "@/lib/logic";
+import { STATE_KEY, STATE_VERSION } from "@/lib/constants";
+import type { AtlasState, HistoryEntry, ModeId, Settings } from "@/lib/types";
+
+export function defaultState(): AtlasState {
+  return {
+    version: STATE_VERSION,
+    settings: {
+      modes: ["find", "name"] as ModeId[],
+      region: "all",
+      subregion: "all",
+      session: "round",
+      roundLen: 15,
+      timed: false,
+      sound: false,
+      heatmap: false,
+      showNames: true, // continent builder: labelled tiles (off = name-for-credit)
+    },
+    leitner: {}, // "id:mode" -> { box, seen, correct, lastSeen }
+    history: [], // [{ id, mode, correct, ms, region, t }]
+    stats: { answered: 0, correct: 0, bestStreak: 0, streakHistory: [] },
+  };
+}
+
+/**
+ * Merge a raw blob onto defaults so missing keys are filled — the same guard
+ * the single-file `State._migrate` used. Pure; also handles the legacy bare
+ * shape written by the pre-Next app.
+ */
+export function migrateState(raw: unknown): AtlasState {
+  const d = defaultState();
+  if (!raw || typeof raw !== "object") return d;
+  const r = raw as Partial<AtlasState>;
+  return {
+    version: STATE_VERSION,
+    settings: { ...d.settings, ...(r.settings || {}) },
+    stats: { ...d.stats, ...(r.stats || {}) },
+    leitner: r.leitner && typeof r.leitner === "object" ? r.leitner : {},
+    history: Array.isArray(r.history) ? r.history : [],
+  };
+}
+
+const hasStorage = () => typeof window !== "undefined" && !!window.localStorage;
+
+/**
+ * localStorage adapter that understands both zustand's `{ state, version }`
+ * wrapper and the legacy bare object the single-file app wrote under the same
+ * key — so a user's existing progress survives the cutover.
+ */
+const legacyAwareStorage: StateStorage = {
+  getItem: (name) => {
+    if (!hasStorage()) return null;
+    const raw = localStorage.getItem(name);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && "state" in parsed) return raw; // already ours
+      // Legacy bare single-file format → wrap + migrate into zustand's shape.
+      return JSON.stringify({ state: migrateState(parsed), version: STATE_VERSION });
+    } catch {
+      return null;
+    }
+  },
+  setItem: (name, value) => {
+    if (hasStorage()) localStorage.setItem(name, value);
+  },
+  removeItem: (name) => {
+    if (hasStorage()) localStorage.removeItem(name);
+  },
+};
+
+interface VerdictInput {
+  id: string;
+  mode: ModeId;
+  correct: boolean;
+  ms: number;
+  region: string;
+}
+
+export interface AtlasStore extends AtlasState {
+  _hasHydrated: boolean;
+  setHasHydrated: (v: boolean) => void;
+  setSettings: (patch: Partial<Settings>) => void;
+  recordVerdict: (v: VerdictInput) => void;
+  resetProgress: () => void;
+  importState: (json: string | object) => void;
+  exportState: () => string;
+}
+
+export const useAtlasStore = create<AtlasStore>()(
+  persist(
+    (set, get) => ({
+      ...defaultState(),
+      _hasHydrated: false,
+      setHasHydrated: (v) => set({ _hasHydrated: v }),
+
+      setSettings: (patch) =>
+        set((s) => ({ settings: { ...s.settings, ...patch } })),
+
+      // Fold one outcome into Leitner + history + stats under "id:mode" — the
+      // shared core of the old Quiz grading and Build._recordVerdict.
+      recordVerdict: ({ id, mode, correct, ms, region }) =>
+        set((s) => {
+          const key = id + ":" + mode;
+          const entry: HistoryEntry = { id, mode, correct, ms, region, t: Date.now() };
+          const history = s.history.concat(entry);
+          if (history.length > 1000) history.splice(0, history.length - 1000);
+          return {
+            leitner: { ...s.leitner, [key]: Logic.leitnerUpdate(s.leitner[key], correct) },
+            history,
+            stats: {
+              ...s.stats,
+              answered: s.stats.answered + 1,
+              correct: s.stats.correct + (correct ? 1 : 0),
+            },
+          };
+        }),
+
+      resetProgress: () => set({ ...defaultState() }),
+
+      importState: (json) => {
+        const parsed = typeof json === "string" ? JSON.parse(json) : json;
+        const migrated = migrateState(parsed);
+        if (!migrated) throw new Error("Invalid state file");
+        set({ ...migrated });
+      },
+
+      exportState: () => {
+        const { version, settings, leitner, history, stats } = get();
+        return JSON.stringify({ version, settings, leitner, history, stats }, null, 2);
+      },
+    }),
+    {
+      name: STATE_KEY,
+      version: STATE_VERSION,
+      storage: createJSONStorage(() => legacyAwareStorage),
+      // Persist only the data — never the actions or the hydration flag.
+      partialize: (s) => ({
+        version: s.version,
+        settings: s.settings,
+        leitner: s.leitner,
+        history: s.history,
+        stats: s.stats,
+      }),
+      onRehydrateStorage: () => (state) => state?.setHasHydrated(true),
+    }
+  )
+);

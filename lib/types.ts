@@ -29,18 +29,24 @@ export interface LeitnerEntry {
  * 50m dataset omits.
  */
 export interface Country {
-  id: string; // padded ccn3 — the leitner/history key
+  id: string; // padded ccn3 (or cca3 fallback) — the leitner/history key
   name: string;
-  cca2?: string;
-  cca3: string;
-  ccn3?: string;
+  official?: string;
+  cca2?: string | null;
+  cca3: string | null;
+  ccn3?: string | null;
   region: string;
   subregion?: string;
   capital?: string;
-  centroid?: [number, number];
+  area?: number;
+  latlng?: [number, number] | null;
+  centroid?: [number, number] | null; // [lng, lat] geographic
   neighbours: Country[];
   feature?: Feature | null;
   flagSvg?: string;
+  flagEmoji?: string;
+  flagAlt?: string;
+  _borders?: string[]; // raw cca3 codes, resolved into `neighbours`
 
   // Builder-only caches (populated lazily by the build view).
   _display?: Feature | null;
