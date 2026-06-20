@@ -56,6 +56,35 @@ export const Audio2 = {
   milestone() {
     this.blip([523, 659, 784, 1046], 0.18, "triangle");
   },
+
+  // A tactile "clunk" for a piece snapping home.
+  place() {
+    if (!soundOn()) return;
+    this.ensure();
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    const body = this.ctx.createOscillator(), bg = this.ctx.createGain();
+    body.type = "sine";
+    body.frequency.setValueAtTime(440, t0);
+    body.frequency.exponentialRampToValueAtTime(150, t0 + 0.08);
+    bg.gain.setValueAtTime(0.0001, t0);
+    bg.gain.exponentialRampToValueAtTime(0.32, t0 + 0.005);
+    bg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.13);
+    body.connect(bg).connect(this.ctx.destination);
+    body.start(t0); body.stop(t0 + 0.15);
+    const tick = this.ctx.createOscillator(), tg = this.ctx.createGain();
+    tick.type = "triangle"; tick.frequency.value = 1180;
+    tg.gain.setValueAtTime(0.0001, t0);
+    tg.gain.exponentialRampToValueAtTime(0.12, t0 + 0.004);
+    tg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.05);
+    tick.connect(tg).connect(this.ctx.destination);
+    tick.start(t0); tick.stop(t0 + 0.06);
+  },
+
+  // A low, blunt buzz for a piece dropped in the wrong place.
+  misplace() {
+    this.blip([180, 120], 0.22, "square");
+  },
 };
 
 interface Part {

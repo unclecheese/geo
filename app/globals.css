@@ -367,3 +367,91 @@ svg.spark { width: 100%; height: 70px; display: block; }
   .menu-footer { gap: 6px; }
   .menu-footer .btn { min-width: 0; }
 }
+
+/* ---------- Continent builder screen ---------- */
+#build-wrap { position: absolute; inset: 0; }
+#build-svg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+#build-svg.grabbing { cursor: grabbing; }
+/* Keep outlines crisp at any zoom — the world group is scaled, strokes aren't. */
+.build-silhouette, .build-seed, .build-placed, .build-drag-piece, .build-seed-label {
+  vector-effect: non-scaling-stroke;
+}
+.build-silhouette { fill: rgba(120, 140, 210, .10); stroke: rgba(150, 170, 230, .42);
+  stroke-width: 1.2; stroke-dasharray: 5 5; stroke-linejoin: round; }
+.build-seed { fill: rgba(167, 139, 250, .85); stroke: #fff; stroke-opacity: .9; stroke-width: .8; }
+.build-seed-label { fill: var(--ink); font-size: 12px; font-weight: 800; text-anchor: middle;
+  paint-order: stroke; stroke: rgba(7, 11, 24, .9); stroke-width: 3.5px; stroke-linejoin: round; pointer-events: none; }
+#build-banner {
+  position: fixed; left: 50%; transform: translateX(-50%); top: 14px; z-index: 30;
+  text-align: center; pointer-events: none; max-width: calc(100% - 160px);
+  background: var(--panel); border: 1px solid var(--stroke); border-radius: var(--radius-sm);
+  padding: 8px 18px; backdrop-filter: blur(8px); box-shadow: var(--shadow);
+}
+.bb-title { font-size: 15px; font-weight: 800; letter-spacing: .3px; }
+.bb-sub { font-size: 12px; color: var(--ink-dim); margin-top: 2px; }
+.bb-timer { font-size: 13px; font-weight: 700; color: var(--accent); margin-top: 3px;
+  font-variant-numeric: tabular-nums; }
+.bb-timer[hidden] { display: none; }
+
+/* bank of draggable country tiles — a scrolling panel down the right edge */
+#build-bank {
+  position: fixed; top: 56px; right: 0; bottom: 0; z-index: 30;
+  width: 236px;
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: max-content; gap: 10px; align-content: start;
+  padding: 6px 14px 18px; overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  background: linear-gradient(to left, rgba(7, 11, 24, .94), rgba(7, 11, 24, .6) 82%, transparent);
+}
+#build-bank:empty { display: none; }
+.build-tile {
+  position: relative; width: 100%; border-radius: 12px;
+  border: 1px solid var(--stroke); background: var(--panel); color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  padding: 8px 6px 6px; cursor: grab; touch-action: none; user-select: none;
+  transition: transform .12s ease, border-color .12s ease;
+}
+.build-tile:hover { border-color: rgba(255, 255, 255, .18); transform: translateY(-2px); }
+.build-tile:active { cursor: grabbing; }
+.tile-hint {
+  position: absolute; top: 3px; right: 3px; width: 17px; height: 17px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;
+  color: var(--ink-faint); background: rgba(255, 255, 255, .06); border: 1px solid var(--stroke);
+  line-height: 1; z-index: 2;
+}
+.tile-hint:hover { color: var(--warn); border-color: var(--warn); background: rgba(251, 191, 36, .12); }
+.build-tile svg { width: 100%; height: auto; display: block; pointer-events: none; }
+.build-tile .tname { font-size: 11px; line-height: 1.15; text-align: center;
+  color: var(--ink-dim); margin-top: 5px; max-width: 100%; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis; }
+.build-tile.dragging { opacity: .3; }
+.build-tile.reject { animation: tile-shake .42s ease; border-color: var(--bad); }
+@keyframes tile-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); } 40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); } 80% { transform: translateX(3px); }
+}
+.build-tile-shape { fill: rgba(167, 139, 250, .9); stroke: #fff; stroke-opacity: .5; stroke-width: .4; }
+.build-drag-piece { fill: rgba(167, 139, 250, .95); stroke: #fff; stroke-opacity: .95;
+  stroke-width: 1; pointer-events: none; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55)); }
+.build-placed { fill: rgba(110, 231, 255, .5); stroke: rgba(255, 255, 255, .55); stroke-width: .5; }
+.tname-hidden { color: var(--ink-faint); opacity: .5; }
+
+/* name-for-credit prompt (unnamed mode) */
+#build-name {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 28px; z-index: 31;
+  width: min(420px, calc(100% - 280px));
+  background: var(--panel-solid); border: 1px solid var(--stroke); border-radius: var(--radius);
+  padding: 14px 16px; box-shadow: var(--shadow);
+}
+#build-name[hidden] { display: none; }
+.bn-prompt { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+#build-name .ac-input { width: 100%; }
+
+/* build completion modal */
+#build-done-back {
+  position: fixed; inset: 0; z-index: 80; display: grid; place-items: center;
+  background: rgba(7, 11, 24, .75); backdrop-filter: blur(4px);
+  opacity: 0; pointer-events: none; transition: opacity .25s ease;
+}
+#build-done-back.show { opacity: 1; pointer-events: auto; }
