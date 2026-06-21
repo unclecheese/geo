@@ -690,7 +690,9 @@ export const BuildView = {
         if (items.length) { active = (active - 1 + items.length) % items.length; render(); }
       } else if (e.key === "Enter") {
         e.preventDefault();
-        submit(active >= 0 && items[active] ? items[active] : input.value);
+        // Highlighted item wins; otherwise take the top suggestion (typeahead),
+        // falling back to the raw text only when there are no suggestions.
+        submit(active >= 0 && items[active] ? items[active] : items[0] ?? input.value);
       }
     });
     list.addEventListener("click", (e: MouseEvent) => {
