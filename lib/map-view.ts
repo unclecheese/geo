@@ -28,6 +28,8 @@ export const MapView = {
   gCountries: null as GSelection | null,
   gMarkers: null as GSelection | null,
   gLabels: null as GSelection | null,
+  gArrow: null as GSelection | null,
+  _arrowPt: null as [number, number] | null,
   path: null as ReturnType<typeof geoPath> | null,
   projection: null as ReturnType<typeof geoEqualEarth> | null,
   zoom: null as ZoomBehavior<SVGSVGElement, unknown> | null,
@@ -102,6 +104,7 @@ export const MapView = {
     this.gCountries = this.g.append("g").attr("class", "countries");
     this.gMarkers = this.g.append("g").attr("class", "markers");
     this.gLabels = this.g.append("g").attr("class", "labels");
+    this.gArrow = this.g.append("g").attr("class", "arrows");
 
     // zoom behaviour
     this.zoom = zoom<SVGSVGElement, unknown>()
@@ -115,6 +118,12 @@ export const MapView = {
         // keep markers readable at any zoom (country names never shown)
         this.gMarkers!.selectAll("circle.marker").attr("r", 2.4 / Math.sqrt(ev.transform.k));
         this.gCountries!.selectAll("path").attr("stroke-width", 0.3 / ev.transform.k);
+        // keep the target arrow a constant on-screen size
+        if (this._arrowPt) {
+          this.gArrow!
+            .select<SVGGElement>("g.map-arrow")
+            .attr("transform", `translate(${this._arrowPt[0]},${this._arrowPt[1]}) scale(${1 / ev.transform.k})`);
+        }
       });
 
     this.svg.call(this.zoom).on("dblclick.zoom", null); // we handle dblclick ourselves
@@ -218,7 +227,37 @@ export const MapView = {
       .attr("fill", (d) => this._fillFor(d));
   },
 
+  // Drop a bouncing arrow that points down at a country — used to make the
+  // highlighted target findable when it's a tiny country (even zoomed in).
+  markArrow(country: Country) {
+    if (!this.gArrow || !this.path || !this.projection || !this.svg) return;
+    const p = country.feature
+      ? (this.path.centroid(country.feature) as [number, number])
+      : country.centroid
+      ? (this.projection(country.centroid) as [number, number])
+      : null;
+    if (!p || !isFinite(p[0]) || !isFinite(p[1])) return;
+    this._arrowPt = p;
+    const k = zoomTransform(this.svg.node()!).k;
+    this.gArrow.selectAll("*").remove();
+    const g = this.gArrow
+      .append("g")
+      .attr("class", "map-arrow")
+      .attr("transform", `translate(${p[0]},${p[1]}) scale(${1 / k})`);
+    // Arrow tip at (0,0), pointing straight down at the country.
+    g.append("g")
+      .attr("class", "arrow-bob")
+      .append("path")
+      .attr("d", "M0,0 L-7,-13 L-2.6,-13 L-2.6,-27 L2.6,-27 L2.6,-13 L7,-13 Z");
+  },
+
+  clearArrow() {
+    this._arrowPt = null;
+    if (this.gArrow) this.gArrow.selectAll("*").remove();
+  },
+
   clearHighlights() {
+    this.clearArrow();
     if (!this.gCountries || !this.gMarkers) return;
     this.gCountries
       .selectAll<SVGPathElement, Feature>("path.country")
@@ -273,6 +312,7 @@ export const MapView = {
   },
 
   reset() {
+    this.clearArrow();
     if (!this.svg || !this.zoom) return;
     this.svg.transition().duration(750).call(this.zoom.transform, zoomIdentity);
   },
@@ -335,6 +375,8 @@ export const MapView = {
     this.gCountries = null;
     this.gMarkers = null;
     this.gLabels = null;
+    this.gArrow = null;
+    this._arrowPt = null;
     this.path = null;
     this.projection = null;
     this.zoom = null;

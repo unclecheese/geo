@@ -252,8 +252,16 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     if (chosenMode === "find" || chosenMode === "name") {
       import("@/lib/map-view").then(({ MapView }) => {
         if (!MapView._inited) return;
+        // Zoom in for tiny countries; otherwise zoom back out from the previous
+        // question so the map doesn't stay stuck zoomed in.
         if (MapView.tinyIds.has(item!.id)) MapView.frameCountry(item!, 0.5);
-        if (chosenMode === "name") MapView.paint(item!.id, "target");
+        else MapView.reset();
+        // Name mode highlights the target — add an arrow so a tiny highlighted
+        // country is easy to spot. (Find mode must not reveal the answer.)
+        if (chosenMode === "name") {
+          MapView.paint(item!.id, "target");
+          MapView.markArrow(item!);
+        }
       });
     }
   },
@@ -303,7 +311,10 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       import("@/lib/map-view").then(({ MapView }) => {
         if (!MapView._inited) return;
         MapView.paint(country.id, correct ? "good" : "bad");
-        if (!correct) MapView.paint(item.id, "target");
+        if (!correct) {
+          MapView.paint(item.id, "target");
+          MapView.markArrow(item); // point out where it actually was
+        }
       });
       get().grade(correct);
     }

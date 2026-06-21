@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { usePinchGuard } from "@/lib/use-pinch-guard";
 import { BuildGraph } from "@/lib/build-graph";
 import { Audio2 } from "@/lib/fx";
 import { useAtlasStore } from "@/store/atlas-store";
@@ -15,6 +16,7 @@ import { Toast } from "@/components/Toast";
 export default function BuildPage() {
   const router = useRouter();
   const { ready } = useData();
+  usePinchGuard();
 
   const active = useBuildStore((s) => s.active);
   const done   = useBuildStore((s) => s.done);

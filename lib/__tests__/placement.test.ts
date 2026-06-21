@@ -18,60 +18,61 @@ describe("Placement.minEdgeGap", () => {
   });
 });
 
+describe("Placement.overlapFraction", () => {
+  it("is 1 for a zero offset (perfect drop)", () => {
+    expect(Placement.overlapFraction(square(0, 0, 100), [0, 0])).toBeCloseTo(1, 2);
+  });
+  it("is ~0.5 when a square is offset by half its width", () => {
+    expect(Placement.overlapFraction(square(0, 0, 100), [50, 0])).toBeCloseTo(0.5, 1);
+  });
+  it("is 0 when the offset clears the shape entirely", () => {
+    expect(Placement.overlapFraction(square(0, 0, 100), [200, 0])).toBe(0);
+  });
+});
+
+describe("Placement.requiredOverlap", () => {
+  it("demands 95% for a large piece", () => {
+    expect(Placement.requiredOverlap(50, 100)).toBeCloseTo(0.95, 2);
+  });
+  it("eases to 50% for a tiny piece", () => {
+    expect(Placement.requiredOverlap(2, 100)).toBeCloseTo(0.5, 2);
+  });
+  it("never goes below 50% tolerance", () => {
+    expect(Placement.requiredOverlap(0, 100)).toBeGreaterThanOrEqual(0.5);
+  });
+});
+
 describe("Placement.validate", () => {
-  const trueCentroid: [number, number] = [100, 100];
-
-  it("snaps when the centroid lands within the radius — even with no neighbours", () => {
+  it("accepts a near-exact drop via the absolute tolerance", () => {
     const v = Placement.validate({
-      dropCentroid: [105, 100],
-      trueCentroid,
-      pieceRings: square(95, 95),
-      neighbourRings: [],
-      borderGap: 5,
-      centroidRadius: 10,
+      pieceRings: square(0, 0, 100),
+      offset: [2, 1],
+      requiredOverlap: 0.95,
+      minAbsTol: 4,
     });
     expect(v.ok).toBe(true);
-    expect(v.reason).toBe("centroid");
-    expect(v.snapTo).toEqual(trueCentroid);
+    expect(v.fraction).toBe(1);
   });
 
-  it("rejects a far drop with no nearby neighbour", () => {
+  it("accepts a well-overlapping drop", () => {
     const v = Placement.validate({
-      dropCentroid: [200, 200],
-      trueCentroid,
-      pieceRings: square(195, 195),
-      neighbourRings: [],
-      borderGap: 5,
-      centroidRadius: 10,
-    });
-    expect(v.ok).toBe(false);
-    expect(v.reason).toBe("far");
-    expect(v.snapTo).toBeNull();
-  });
-
-  it("snaps on a border touch when the centroid is out of range", () => {
-    const v = Placement.validate({
-      dropCentroid: [150, 100], // 50px away — centroid path fails
-      trueCentroid,
-      pieceRings: square(150, 95),
-      neighbourRings: [square(160, 95)], // shares the piece's right edge
-      borderGap: 5,
-      centroidRadius: 1,
+      pieceRings: square(0, 0, 100),
+      offset: [3, 0], // 97% overlap
+      requiredOverlap: 0.95,
+      minAbsTol: 0,
     });
     expect(v.ok).toBe(true);
-    expect(v.reason).toBe("border");
+    expect(v.fraction).toBeGreaterThan(0.95);
   });
 
-  it("does not border-snap to a neighbour that is too far", () => {
+  it("rejects a drop that overlaps too little", () => {
     const v = Placement.validate({
-      dropCentroid: [150, 100],
-      trueCentroid,
-      pieceRings: square(150, 95),
-      neighbourRings: [square(300, 95)],
-      borderGap: 5,
-      centroidRadius: 1,
+      pieceRings: square(0, 0, 100),
+      offset: [40, 0], // 60% overlap, below a 95% bar
+      requiredOverlap: 0.95,
+      minAbsTol: 0,
     });
     expect(v.ok).toBe(false);
-    expect(v.reason).toBe("far");
+    expect(v.fraction).toBeLessThan(0.95);
   });
 });

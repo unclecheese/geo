@@ -17,12 +17,16 @@ import { DataLayer } from "@/lib/data-layer";
 import { Logic } from "@/lib/logic";
 import { Audio2 } from "@/lib/fx";
 import { Placement } from "@/lib/placement";
+import { europeanRussia, ukraineWithCrimea, crimeaPolygon, RU_CCN3, UA_CCN3 } from "@/lib/ru-fix";
 import { useAtlasStore } from "@/store/atlas-store";
 import type { Country } from "@/lib/types";
 import type { Feature, FeatureCollection } from "geojson";
 
 type SVGSel = Selection<SVGSVGElement, unknown, null, undefined>;
 type GSel = Selection<SVGGElement, unknown, null, undefined>;
+
+// Pixels reserved on the left edge for the country bank (panel width + gutter).
+const BANK_RESERVE = 280;
 
 export interface BuildModel {
   continent: string;
@@ -55,8 +59,9 @@ export const BuildView = {
   model: null as BuildModel | null,
   fieldBounds: null as [[number, number], [number, number]] | null,
   extent: 0,
-  borderGap: 0,
   centroidRadius: 0,
+  // Continent-specific geometry overrides (e.g. European Russia, Ukraine+Crimea).
+  _override: new Map<string, Feature>(),
   drag: null as DragState | null,
   _inited: false,
   _naming: false,
@@ -196,19 +201,53 @@ export const BuildView = {
     this.renderBank();
   },
 
+  // Build the continent-specific geometry overrides. For Europe: Russia is
+  // clipped to its European part (west of the Urals) and Crimea is moved from
+  // Russia onto Ukraine. Other continents have no overrides.
+  _buildOverrides() {
+    this._override = new Map<string, Feature>();
+    if (!this.model || this.model.continent !== "Europe") return;
+    const ru = DataLayer.byCcn3.get(RU_CCN3);
+    const ua = DataLayer.byCcn3.get(UA_CCN3);
+    if (ru?.feature) this._override.set(ru.id, europeanRussia(ru.feature));
+    if (ua?.feature && ru?.feature) this._override.set(ua.id, ukraineWithCrimea(ua.feature, ru.feature));
+  },
+
   _render() {
     if (!this.model || !this.svg) return;
     const topo = DataLayer.topo as never; // Topo type is internal to data-layer
     if (!topo) return;
+
+    this._buildOverrides();
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const geoms = (topo as any).objects.countries.geometries as Array<{ id: string | number }>;
     const placeableCcn3 = new Set(
       this.model.graph.placeable.map((c) => c.ccn3).filter(Boolean)
     );
-    const memberGeoms = geoms.filter((g) =>
-      placeableCcn3.has(DataLayer.pad3(g.id))
+    // Dissolve the placeable set into one silhouette — but exclude any country
+    // we override geometry for (Russia), since topojson.merge can only see the
+    // raw arcs. Overridden silhouettes are appended as their own paths below.
+    const overrideCcn3 = new Set(
+      [...this._override.keys()]
+        .map((id) => DataLayer.byCcn3.get(id)?.ccn3)
+        .filter(Boolean) as string[]
+    );
+    const memberGeoms = geoms.filter(
+      (g) => placeableCcn3.has(DataLayer.pad3(g.id)) && !overrideCcn3.has(DataLayer.pad3(g.id))
     );
     const merged = topoMerge(topo, memberGeoms as never);
+
+    // Extra silhouette outlines for overridden countries (European Russia) plus
+    // the Crimea sliver, so the backdrop matches the tiles you actually place.
+    const extraSil: Feature[] = [];
+    if (this.model.continent === "Europe") {
+      const ruFeat = this._override.get(RU_CCN3);
+      if (ruFeat) extraSil.push(ruFeat);
+      const ru = DataLayer.byCcn3.get(RU_CCN3);
+      const crimea = ru?.feature ? crimeaPolygon(ru.feature) : null;
+      if (crimea) extraSil.push({ type: "Feature", properties: null, geometry: { type: "Polygon", coordinates: crimea } });
+    }
 
     // Frame on main landmasses only (displayFeature) so Hawaii/Aleutians
     // don't shrink the whole continent.
@@ -220,10 +259,11 @@ export const BuildView = {
       features: displayFeatures,
     };
 
+    // Reserve room on the LEFT for the country bank; inset the rest.
     this.projection = geoEqualEarth().fitExtent(
       [
-        [30, 30],
-        [Math.max(160, this.width - 268), this.height - 30],
+        [BANK_RESERVE, 30],
+        [Math.max(BANK_RESERVE + 130, this.width - 30), this.height - 30],
       ],
       displayColl
     );
@@ -233,10 +273,9 @@ export const BuildView = {
     this.fieldBounds = b as [[number, number], [number, number]];
     this.extent = Math.hypot(b[1][0] - b[0][0], b[1][1] - b[0][1]);
     this.centroidRadius = 0.05 * this.extent;
-    this.borderGap = 0.02 * this.extent;
 
     this.gSil!.selectAll("path")
-      .data([merged])
+      .data([merged, ...extraSil])
       .join("path")
       .attr("class", "build-silhouette")
       .attr("d", this.path as never);
@@ -245,8 +284,11 @@ export const BuildView = {
   },
 
   // Main landmass only — drops polygons smaller than ~18% of the largest.
-  // Cached per country on country._display.
+  // Cached per country on country._display. Overridden geometry (European
+  // Russia, Ukraine+Crimea) is returned as-is — it is already curated.
   _displayFeature(country: Country): Feature {
+    const ov = this._override.get(country.id);
+    if (ov) return ov;
     const c = country as Country & { _display?: Feature };
     if (c._display) return c._display;
     const f = country.feature!;
@@ -437,28 +479,39 @@ export const BuildView = {
     this.drag = null;
   },
 
+  // True when the pointer was released anywhere over the bank panel (screen
+  // space) — used to treat a drop-back-on-the-bank as a cancel even when the
+  // map is zoomed in.
+  _overBank(ev: PointerEvent): boolean {
+    if (!this._bankEl) return false;
+    const r = this._bankEl.getBoundingClientRect();
+    return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+  },
+
   _endDrag(ev: PointerEvent) {
     if (!this.drag) return;
     const { country, tile, trueCentroid, el } = this.drag;
     this.drag = null;
     tile.classList.remove("dragging");
 
+    // Dropped back over the bank → always a cancel, no penalty.
+    if (this._overBank(ev)) {
+      this._cancelReturn(tile, trueCentroid, el);
+      return;
+    }
+
     const [x, y] = this._localPoint(ev);
     const disp = this._displayFeature(country);
-    const dx = x - trueCentroid[0], dy = y - trueCentroid[1];
+    // Piece outline at its true position, and how far the drop missed by.
+    const trueRings = this._projectRings(disp);
+    const offset: [number, number] = [x - trueCentroid[0], y - trueCentroid[1]];
 
-    const placedNeighbours = country.neighbours.filter(
-      (n) => this.model!.placedIds.has(n.id) && n.feature
-    );
+    const pieceDiag = Placement.diag(trueRings);
     const result = Placement.validate({
-      dropCentroid: [x, y],
-      trueCentroid,
-      pieceRings: this._projectRings(disp, dx, dy),
-      neighbourRings: placedNeighbours.map((n) =>
-        this._projectRings(this._displayFeature(n))
-      ),
-      borderGap: this.borderGap,
-      centroidRadius: this.centroidRadius,
+      pieceRings: trueRings,
+      offset,
+      requiredOverlap: Placement.requiredOverlap(pieceDiag, this.extent),
+      minAbsTol: 3,
     });
 
     if (result.ok) {
@@ -690,6 +743,7 @@ export const BuildView = {
     this.model = null;
     this.drag = null;
     this.fieldBounds = null;
+    this._override = new Map<string, Feature>();
     this._naming = false;
     this._inited = false;
 

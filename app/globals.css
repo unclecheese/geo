@@ -332,8 +332,18 @@ svg.spark { width: 100%; height: 70px; display: block; }
 
 /* ---------- Map screen ---------- */
 #map-wrap { position: fixed; inset: 0; }
-#map { width: 100%; height: 100%; display: block; cursor: grab; }
+#map { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 #map.dragging { cursor: grabbing; }
+
+/* arrow pointing at the highlighted/target country (map identification) */
+.map-arrow { pointer-events: none; }
+.map-arrow path { fill: var(--warn); stroke: #fff; stroke-width: 1px; stroke-linejoin: round;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,.5)); }
+.map-arrow .arrow-bob { animation: arrow-bounce 1s ease-in-out infinite; }
+@keyframes arrow-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
 
 /* country paths */
 .country { stroke: var(--map-sea); stroke-width: .3px; cursor: pointer; transition: fill .25s ease; }
@@ -393,15 +403,18 @@ svg.spark { width: 100%; height: 70px; display: block; }
   font-variant-numeric: tabular-nums; }
 .bb-timer[hidden] { display: none; }
 
-/* bank of draggable country tiles — a scrolling panel down the right edge */
+/* bank of draggable country tiles — a self-contained, scrolling panel inset
+   from the left edge so tiles never run off-screen */
 #build-bank {
-  position: fixed; top: 56px; right: 0; bottom: 0; z-index: 30;
-  width: 236px;
+  position: fixed; top: 64px; left: 16px; bottom: 16px; z-index: 30;
+  width: 248px; max-width: calc(100vw - 32px);
   display: grid; grid-template-columns: repeat(2, 1fr);
-  grid-auto-rows: max-content; gap: 10px; align-content: start;
-  padding: 6px 14px 18px; overflow-y: auto; overflow-x: hidden;
-  overscroll-behavior-y: contain;
-  background: linear-gradient(to left, rgba(7, 11, 24, .94), rgba(7, 11, 24, .6) 82%, transparent);
+  grid-auto-rows: max-content; gap: 12px; align-content: start;
+  padding: 14px; overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain;
+  background: var(--panel); backdrop-filter: blur(12px);
+  border: 1px solid var(--stroke); border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 #build-bank:empty { display: none; }
 .build-tile {

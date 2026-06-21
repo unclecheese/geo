@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { usePinchGuard } from "@/lib/use-pinch-guard";
 import { MODES } from "@/lib/modes";
 import { Logic } from "@/lib/logic";
 import { DataLayer } from "@/lib/data-layer";
@@ -19,6 +20,7 @@ import type { Country } from "@/lib/types";
 export default function MapPage() {
   const router = useRouter();
   const { ready } = useData();
+  usePinchGuard();
 
   const session      = useQuizStore((s) => s.session);
   const current      = useQuizStore((s) => s.current);

@@ -3,18 +3,19 @@ export type Ring = Point[];
 export type Poly = Ring[]; // a polygon as an array of rings (outer + holes)
 
 export interface ValidateOpts {
-  dropCentroid: Point;
-  trueCentroid: Point;
+  // Piece outline at its TRUE (correct) position, in pixels.
   pieceRings: Poly;
-  neighbourRings?: Poly[];
-  borderGap: number;
-  centroidRadius: number;
+  // How far the dropped piece is translated from its true spot: drop − true.
+  offset: Point;
+  // Fraction of the piece that must overlap its true footprint to count (0–1).
+  requiredOverlap: number;
+  // A near-exact drop within this many pixels always counts (sampling slack).
+  minAbsTol: number;
 }
 
 export interface Verdict {
   ok: boolean;
-  snapTo: Point | null;
-  reason: "centroid" | "border" | "far";
+  fraction: number;
 }
 
 /**
@@ -75,6 +76,68 @@ export const Placement = {
     return inside;
   },
 
+  // Even-odd point-in-polygon across all rings (outer ring + holes).
+  _ptInPoly(p: Point, poly: Poly): boolean {
+    let inside = false;
+    for (const ring of poly) if (this._ptInRing(p, ring)) inside = !inside;
+    return inside;
+  },
+
+  // Bounding box [minX, minY, maxX, maxY] of a polygon's rings.
+  _bbox(poly: Poly): [number, number, number, number] {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const ring of poly) for (const [x, y] of ring) {
+      if (x < x0) x0 = x;
+      if (y < y0) y0 = y;
+      if (x > x1) x1 = x;
+      if (y > y1) y1 = y;
+    }
+    return [x0, y0, x1, y1];
+  },
+
+  // Diagonal of a polygon's bounding box (a size proxy, in pixels).
+  diag(poly: Poly): number {
+    const [x0, y0, x1, y1] = this._bbox(poly);
+    if (!isFinite(x0)) return 0;
+    return Math.hypot(x1 - x0, y1 - y0);
+  },
+
+  // Fraction of the dropped piece that overlaps its true footprint, by sampling.
+  // The piece (rings) is at its true position; the drop is that shape translated
+  // by `offset`. A point p lies in the dropped piece iff (p − offset) lies in the
+  // true piece, so we Monte-Carlo a grid over the true bbox and count points that
+  // fall in both. Returns overlapArea / pieceArea ∈ [0, 1].
+  overlapFraction(rings: Poly, offset: Point, targetSamples = 1600): number {
+    const [x0, y0, x1, y1] = this._bbox(rings);
+    if (!isFinite(x0)) return 0;
+    const w = x1 - x0, h = y1 - y0;
+    if (w <= 0 || h <= 0) return 0;
+    // Pick a grid step so the bbox yields ~targetSamples points.
+    const step = Math.max(0.5, Math.sqrt((w * h) / targetSamples));
+    let inTrue = 0, inBoth = 0;
+    for (let x = x0 + step / 2; x <= x1; x += step) {
+      for (let y = y0 + step / 2; y <= y1; y += step) {
+        const p: Point = [x, y];
+        if (!this._ptInPoly(p, rings)) continue;
+        inTrue++;
+        if (this._ptInPoly([x - offset[0], y - offset[1]], rings)) inBoth++;
+      }
+    }
+    return inTrue ? inBoth / inTrue : 0;
+  },
+
+  // Required overlap scales with piece size: large countries demand a near-exact
+  // 95% overlap; small ones are eased toward 50% (tolerance is never looser than
+  // 50%). `rel` is the piece's size relative to the whole field.
+  requiredOverlap(pieceDiag: number, fieldExtent: number): number {
+    const MAX = 0.95, MIN = 0.5;
+    const SMALL = 0.1, BIG = 0.45; // size band, as a fraction of the field diagonal
+    if (fieldExtent <= 0) return MAX;
+    const rel = pieceDiag / fieldExtent;
+    const t = Math.max(0, Math.min(1, (rel - SMALL) / (BIG - SMALL)));
+    return MIN + t * (MAX - MIN);
+  },
+
   // Minimum distance between the boundaries of two polygons. 0 when they
   // overlap (an edge crosses, or one contains a vertex of the other); ~0 when
   // they merely touch; the separation gap otherwise.
@@ -101,20 +164,15 @@ export const Placement = {
     return min;
   },
 
-  // Decide a drop on position alone — any country can be placed, neighbour or
-  // not. Snap when the piece's centroid is within the fallback radius of its
-  // true centroid, OR when its edges come within the border-gap of a country
-  // already on the map. On success the snap target is the true position.
+  // Decide a drop by how much the piece overlaps where it actually belongs.
+  // A near-exact drop (within minAbsTol px) always counts; otherwise the
+  // overlap fraction must clear the size-scaled requiredOverlap threshold.
   validate(opts: ValidateOpts): Verdict {
-    const { dropCentroid, trueCentroid, pieceRings, neighbourRings, borderGap, centroidRadius } = opts;
-    if (this._dist(dropCentroid, trueCentroid) <= centroidRadius) {
-      return { ok: true, snapTo: trueCentroid, reason: "centroid" };
+    const { pieceRings, offset, requiredOverlap, minAbsTol } = opts;
+    if (Math.hypot(offset[0], offset[1]) <= minAbsTol) {
+      return { ok: true, fraction: 1 };
     }
-    for (const nb of neighbourRings || []) {
-      if (this.minEdgeGap(pieceRings, nb) <= borderGap) {
-        return { ok: true, snapTo: trueCentroid, reason: "border" };
-      }
-    }
-    return { ok: false, snapTo: null, reason: "far" };
+    const fraction = this.overlapFraction(pieceRings, offset);
+    return { ok: fraction >= requiredOverlap, fraction };
   },
 };
