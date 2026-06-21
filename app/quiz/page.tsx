@@ -43,11 +43,12 @@ export default function QuizPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
-  // Enter advances on reveal.
+  // Enter advances once the answer's been graded — even with the answer input
+  // still focused. (The submitting Enter is safe: `answered` is still false on
+  // that keystroke, so it grades without also skipping ahead.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const onInput = (e.target as HTMLElement)?.matches?.("input");
-      if (e.key === "Enter" && answered && reveal && !onInput) next();
+      if (e.key === "Enter" && answered && reveal) next();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
