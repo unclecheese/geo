@@ -17,6 +17,8 @@ export function defaultState(): AtlasState {
       sound: false,
       heatmap: false,
       showNames: true, // continent builder: labelled tiles (off = name-for-credit)
+      buildDifficulty: "easy" as const,
+      rotateRandom: false,
     },
     leitner: {}, // "id:mode" -> { box, seen, correct, lastSeen }
     history: [], // [{ id, mode, correct, ms, region, t }]
@@ -33,9 +35,16 @@ export function migrateState(raw: unknown): AtlasState {
   const d = defaultState();
   if (!raw || typeof raw !== "object") return d;
   const r = raw as Partial<AtlasState>;
+  const settings = { ...d.settings, ...(r.settings || {}) };
+  // "endless" was removed in favour of "around the world".
+  if (settings.session === "endless") settings.session = "around";
+  // Derive a difficulty for states saved before it existed (off = name-for-credit).
+  if (!(r.settings && (r.settings as Partial<Settings>).buildDifficulty)) {
+    settings.buildDifficulty = settings.showNames === false ? "hard" : "easy";
+  }
   return {
     version: STATE_VERSION,
-    settings: { ...d.settings, ...(r.settings || {}) },
+    settings,
     stats: { ...d.stats, ...(r.stats || {}) },
     leitner: r.leitner && typeof r.leitner === "object" ? r.leitner : {},
     history: Array.isArray(r.history) ? r.history : [],
@@ -149,6 +158,10 @@ export const useAtlasStore = create<AtlasStore>()(
       name: STATE_KEY,
       version: STATE_VERSION,
       storage: createJSONStorage(() => legacyAwareStorage),
+      // Run persisted state through migrateState so older saves gain new setting
+      // defaults (e.g. buildDifficulty) and retired values (session "endless")
+      // are normalised — zustand's default shallow merge would skip all that.
+      merge: (persisted, current) => ({ ...current, ...migrateState(persisted) }),
       // Persist only the data — never the actions or the hydration flag.
       partialize: (s) => ({
         version: s.version,

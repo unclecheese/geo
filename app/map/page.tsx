@@ -98,11 +98,7 @@ export default function MapPage() {
   const item = current?.item;
   const mode = current?.mode;
 
-  const progressText = session
-    ? session.type === "round"
-      ? `${session.asked} / ${session.total}`
-      : `Q${session.asked} · endless`
-    : "";
+  const progressText = session ? `${session.asked} / ${session.total}` : "";
 
   // MC choices for name mode.
   const st = useAtlasStore.getState().settings;

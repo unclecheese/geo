@@ -19,9 +19,11 @@ export const BuildGraph = {
   SUPPORTED: ["Africa", "Asia", "Europe", "Americas", "Oceania"] as const,
 
   // Same-continent land-border adjacency as id -> Set(id). Only edges where
-  // both endpoints sit in the chosen continent are kept.
-  adjacency(countries: Country[], continent: string): Map<string, Set<string>> {
-    const inC = countries.filter((c) => c.region === continent);
+  // both endpoints sit in the chosen continent (and subregion, if given) are kept.
+  adjacency(countries: Country[], continent: string, subregion = "all"): Map<string, Set<string>> {
+    const inC = countries.filter(
+      (c) => c.region === continent && (subregion === "all" || c.subregion === subregion)
+    );
     const ids = new Set(inC.map((c) => c.id));
     const adj = new Map<string, Set<string>>();
     for (const c of inC) adj.set(c.id, new Set());
@@ -63,11 +65,16 @@ export const BuildGraph = {
   // a piece is dropped against a neighbour already on the map) and the placeable
   // set — every country in the continent that has a polygon to render. Islands
   // and otherwise-disconnected nations are included; they snap by position.
-  build(countries: Country[], continent: string): BuildModel {
-    const adj = this.adjacency(countries, continent);
+  build(countries: Country[], continent: string, subregion = "all"): BuildModel {
+    const adj = this.adjacency(countries, continent, subregion);
     const supported = (this.SUPPORTED as readonly string[]).includes(continent);
     const placeable = supported
-      ? countries.filter((c) => c.region === continent && c.feature)
+      ? countries.filter(
+          (c) =>
+            c.region === continent &&
+            (subregion === "all" || c.subregion === subregion) &&
+            c.feature
+        )
       : [];
     const buildable = supported && placeable.length >= 3;
     return { continent, supported, buildable, adjacency: adj, placeable, islands: [] };

@@ -60,11 +60,7 @@ export default function QuizPage() {
     router.push("/", { scroll: false });
   };
 
-  const progressText = session
-    ? session.type === "round"
-      ? `${session.asked} / ${session.total}`
-      : `Q${session.asked} · endless`
-    : "";
+  const progressText = session ? `${session.asked} / ${session.total}` : "";
 
   const item = current?.item;
   const mode = current?.mode;

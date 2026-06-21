@@ -77,10 +77,16 @@ export const useBuildStore = create<BuildState>((set, get) => ({
 
     const graph = BuildGraph.build(
       DataLayer.countries.filter((c) => c.feature),
-      continent
+      continent,
+      s.subregion
     );
     if (!graph.buildable) {
-      toast("That continent can't be built yet.", "bad");
+      toast(
+        s.subregion && s.subregion !== "all"
+          ? "Not enough countries in that subregion to build."
+          : "That continent can't be built yet.",
+        "bad"
+      );
       return;
     }
 
@@ -136,29 +142,46 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     const session = state.session;
     const model = state.model;
 
-    const showNames = useAtlasStore.getState().settings.showNames !== false;
-    if (showNames) {
+    const difficulty = useAtlasStore.getState().settings.buildDifficulty;
+    if (difficulty === "easy") {
+      // Names shown — placing it correctly is the whole task.
       doRecordVerdict(country, true, session);
       get().checkComplete();
-    } else {
-      // Unnamed mode: prompt for the name; grade on the typed answer.
-      import("@/lib/build-view").then(({ BuildView }) => {
-        if (!BuildView._inited) return;
-        BuildView.showNamePrompt((typed: string) => {
-          const correct = Logic.matchAnswer(typed, country.name);
+      return;
+    }
+
+    // Hard/expert: name the country (expert also names the capital). Grade on
+    // the typed answers; reveal the name if it was missed.
+    const hasCapital = !!country.capital && country.capital !== "—";
+    import("@/lib/build-view").then(({ BuildView }) => {
+      if (!BuildView._inited) return;
+      BuildView.showNamePrompt((typedName: string) => {
+        const nameCorrect = Logic.matchAnswer(typedName, country.name);
+
+        const settle = (correct: boolean, capCorrect: boolean | null) => {
           doRecordVerdict(country, correct, session);
-          if (!correct) {
+          if (!nameCorrect) {
             model.revealedIds.add(country.id);
             BuildView._redrawPlaced();
-            toast("It's " + country.name, "bad");
-          } else {
-            toast("Correct — " + country.name, "good");
           }
+          if (correct) toast("Correct — " + country.name, "good");
+          else if (!nameCorrect) toast("It's " + country.name, "bad");
+          else toast("Capital of " + country.name + " is " + country.capital, "bad");
+          void capCorrect;
           BuildView.hideNamePrompt();
           get().checkComplete();
-        });
+        };
+
+        if (difficulty === "expert" && hasCapital) {
+          BuildView.showCapitalPrompt((typedCap: string) => {
+            const capCorrect = Logic.matchAnswer(typedCap, country.capital!);
+            settle(nameCorrect && capCorrect, capCorrect);
+          });
+        } else {
+          settle(nameCorrect, null);
+        }
       });
-    }
+    });
   },
 
   afterMistake() {
@@ -175,7 +198,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     state.session.mistakes += 1;
     doRecordVerdict(country, false, state.session);
 
-    const showNames = useAtlasStore.getState().settings.showNames !== false;
+    const showNames = useAtlasStore.getState().settings.buildDifficulty === "easy";
     if (!showNames) {
       state.model.revealedIds.add(country.id);
       toast("It's " + country.name, "bad");

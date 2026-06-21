@@ -29,6 +29,16 @@ type GSel = Selection<SVGGElement, unknown, null, undefined>;
 // Pixels reserved on the left edge for the country bank (panel width + gutter).
 const BANK_RESERVE = 280;
 
+// A broad, vivid palette for the country tapestry. Graph-coloured against the
+// border adjacency so no two neighbours share one — duplicates only ever appear
+// far apart.
+const BUILD_PALETTE = [
+  "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e",
+  "#10b981", "#14b8a6", "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
+  "#8b5cf6", "#a855f7", "#d946ef", "#ec4899", "#f43f5e", "#fb7185",
+  "#fbbf24", "#34d399", "#60a5fa", "#c084fc", "#f472b6", "#2dd4bf",
+];
+
 export interface BuildModel {
   continent: string;
   graph: import("@/lib/build-graph").BuildModel;
@@ -63,6 +73,8 @@ export const BuildView = {
   centroidRadius: 0,
   // Continent-specific geometry overrides (e.g. European Russia, Ukraine+Crimea).
   _override: new Map<string, Feature>(),
+  // Per-country tapestry colour, graph-coloured against border adjacency.
+  _colourMap: new Map<string, string>(),
   drag: null as DragState | null,
   _inited: false,
   _naming: false,
@@ -198,8 +210,44 @@ export const BuildView = {
   // silhouette, and populates the bank. Called after init() each game.
   show(model: BuildModel) {
     this.model = model;
+    this._assignColours();
     this._render();
     this.renderBank();
+  },
+
+  _hash(id: string): number {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    return h;
+  },
+
+  // Greedy graph-colouring over the border adjacency: each country takes the
+  // least-used palette colour not worn by a placed neighbour. Highest-degree
+  // countries are coloured first (the classic Welsh–Powell ordering), and ties
+  // start from an id-hashed offset so the spread looks varied, not banded.
+  _assignColours() {
+    this._colourMap = new Map<string, string>();
+    if (!this.model) return;
+    const adj = this.model.graph.adjacency;
+    const counts = new Map<string, number>(BUILD_PALETTE.map((c) => [c, 0]));
+    const order = this.model.graph.placeable
+      .slice()
+      .sort((a, b) => (adj.get(b.id)?.size || 0) - (adj.get(a.id)?.size || 0));
+    for (const c of order) {
+      const taken = new Set<string>();
+      const nb = adj.get(c.id);
+      if (nb) for (const id of nb) { const col = this._colourMap.get(id); if (col) taken.add(col); }
+      const start = this._hash(c.id) % BUILD_PALETTE.length;
+      let best = BUILD_PALETTE[start], bestCount = Infinity;
+      for (let k = 0; k < BUILD_PALETTE.length; k++) {
+        const col = BUILD_PALETTE[(start + k) % BUILD_PALETTE.length];
+        if (taken.has(col)) continue;
+        const cnt = counts.get(col)!;
+        if (cnt < bestCount) { best = col; bestCount = cnt; }
+      }
+      this._colourMap.set(c.id, best);
+      counts.set(best, (counts.get(best) || 0) + 1);
+    }
   },
 
   // Build the continent-specific geometry overrides. For Europe: Russia is
@@ -352,15 +400,13 @@ export const BuildView = {
     return c._display;
   },
 
-  // Stable, vivid HSL colour per country (hashed from its id).
+  // Graph-coloured tapestry colour (assigned in _assignColours). Falls back to a
+  // hashed palette entry for any country not in the current model.
   _colour(country: Country): string {
-    const id = String(country.id);
-    let h = 0;
-    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-    const hue = h % 360;
-    const sat = 55 + (h >> 9) % 22;
-    const lig = 52 + (h >> 13) % 13;
-    return `hsl(${hue} ${sat}% ${lig}%)`;
+    return (
+      this._colourMap.get(country.id) ||
+      BUILD_PALETTE[this._hash(String(country.id)) % BUILD_PALETTE.length]
+    );
   },
 
   // Project a feature's coordinate rings into pixel space, optionally offset.
@@ -432,7 +478,7 @@ export const BuildView = {
     const remaining = this.model.graph.placeable.filter(
       (c) => !this.model!.placedIds.has(c.id) && c.feature
     );
-    const showNames = useAtlasStore.getState().settings.showNames !== false;
+    const showNames = useAtlasStore.getState().settings.buildDifficulty === "easy";
     const ordered = showNames
       ? remaining.slice().sort((a, b) => a.name.localeCompare(b.name))
       : Logic._shuffle(remaining.slice());
@@ -450,7 +496,7 @@ export const BuildView = {
     const tile = document.createElement("button");
     tile.className = "build-tile";
     tile.dataset.id = country.id;
-    const showNames = useAtlasStore.getState().settings.showNames !== false;
+    const showNames = useAtlasStore.getState().settings.buildDifficulty === "easy";
     tile.innerHTML =
       `<span class="tile-hint" role="button" tabindex="0" title="Stuck? Reveal its spot" aria-label="Reveal location">?</span>` +
       this._tileSVG(country) +
@@ -657,15 +703,36 @@ export const BuildView = {
       .attr("stroke-width", ".5");
   },
 
-  // Name-for-credit prompt (unnamed mode). Builds inline autocomplete,
-  // calls onSubmit(typed) once (Enter / pick / Skip).
-  showNamePrompt(onSubmit: (typed: string) => void) {
-    if (!this._nameEl || !this._nameHostEl || !this.model) return;
+  // Generic credit prompt: shows a labelled inline autocomplete over `candidates`
+  // and calls onSubmit(typed) once (Enter / pick / Skip).
+  showPrompt(label: string, candidates: string[], onSubmit: (typed: string) => void) {
+    if (!this._nameEl || !this._nameHostEl) return;
+    const lbl = this._nameEl.querySelector(".bn-prompt");
+    if (lbl) lbl.textContent = label;
     this._nameHostEl.innerHTML = "";
     this._nameEl.hidden = false;
     this._naming = true;
+    this._buildAutocomplete(this._nameHostEl, candidates, (v) => onSubmit(v));
+  },
+
+  // Name-for-credit prompt (hard/expert) — the country you just placed.
+  showNamePrompt(onSubmit: (typed: string) => void) {
+    if (!this.model) return;
     const names = [...new Set(this.model.graph.placeable.map((c) => c.name))];
-    this._buildAutocomplete(this._nameHostEl, names, (v) => onSubmit(v));
+    this.showPrompt("Name the country you just placed", names, onSubmit);
+  },
+
+  // Capital prompt (expert) — the capital of the country just placed.
+  showCapitalPrompt(onSubmit: (typed: string) => void) {
+    if (!this.model) return;
+    const capitals = [
+      ...new Set(
+        this.model.graph.placeable
+          .map((c) => c.capital)
+          .filter((c): c is string => !!c && c !== "—")
+      ),
+    ];
+    this.showPrompt("And its capital?", capitals, onSubmit);
   },
 
   hideNamePrompt() {
@@ -788,6 +855,7 @@ export const BuildView = {
     this.drag = null;
     this.fieldBounds = null;
     this._override = new Map<string, Feature>();
+    this._colourMap = new Map<string, string>();
     this._naming = false;
     this._inited = false;
 

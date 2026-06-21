@@ -135,10 +135,27 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     const t = get()._timerId;
     if (t) clearInterval(t);
 
+    // "Around the world" runs until every askable country in the pool has been
+    // asked once — so its total is the count of countries usable by the active
+    // modes, not a fixed round length.
+    const aroundTotal = (): number => {
+      const p = pool();
+      const askable = new Set<string>();
+      for (const c of p) {
+        for (const m of modes) {
+          if ((m === "find" || m === "name") && c.feature) askable.add(c.id);
+          else if (m === "capital" && c.capital && c.capital !== "—") askable.add(c.id);
+          else if (m === "flag" && c.cca2) askable.add(c.id);
+          else if (m === "border" && c.neighbours.some((n) => p.includes(n))) askable.add(c.id);
+        }
+      }
+      return askable.size || p.length;
+    };
+
     const session: QuizSession = {
       type: s.session,
       screen,
-      total: s.session === "round" ? s.roundLen : Infinity,
+      total: s.session === "round" ? s.roundLen : aroundTotal(),
       timed: s.timed,
       asked: 0,
       score: 0,
@@ -403,11 +420,11 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       });
     }
 
-    if (session && session.type === "round") {
+    if (session && (session.type === "round" || session.type === "around")) {
       Confetti.burst();
       set({ active: false, finished: true, session, current: null, reveal: null, _timerId: null });
     } else {
-      if (session) toast("Endless session ended in " + Logic.fmtDuration(session.elapsedMs), "good");
+      if (session) toast("Session ended in " + Logic.fmtDuration(session.elapsedMs), "good");
       set({ active: false, finished: false, session: null, current: null, reveal: null, _timerId: null });
     }
   },

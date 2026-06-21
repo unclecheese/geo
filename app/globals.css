@@ -68,7 +68,62 @@ button { font-family: inherit; cursor: pointer; }
 .brand.sm .logo { width: 28px; height: 28px; border-radius: 8px; }
 
 /* ---------- Menu / splash ---------- */
-.menu-hero { text-align: center; margin-bottom: 26px; }
+.menu-hero { text-align: center; margin-bottom: 30px; }
+.menu-hero h1 {
+  background: linear-gradient(120deg, var(--accent), var(--accent-2) 55%, var(--accent-3));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* ---------- Landing: quiz cards ---------- */
+.quiz-cards {
+  width: min(980px, 100%);
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
+}
+@media (max-width: 780px) { .quiz-cards { grid-template-columns: 1fr; } }
+
+.qc-map    { --c1: #6ee7ff; }
+.qc-expert { --c1: #fb7185; }
+.qc-build  { --c1: #a78bfa; }
+
+.quiz-card {
+  position: relative; overflow: hidden; cursor: pointer; text-align: left; color: var(--ink);
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 26px 22px 20px; border-radius: var(--radius);
+  background: var(--panel); border: 1px solid var(--stroke); box-shadow: var(--shadow);
+  transition: transform .2s cubic-bezier(.2,.8,.2,1), border-color .2s, box-shadow .2s;
+}
+.quiz-card::before {
+  content: ""; position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  background: radial-gradient(460px 240px at 50% -30%, var(--c1), transparent 70%);
+  transition: opacity .28s;
+}
+.quiz-card > * { position: relative; }
+.quiz-card:hover { transform: translateY(-7px) scale(1.025); border-color: var(--c1);
+  box-shadow: 0 28px 64px rgba(0,0,0,.6); }
+.quiz-card:hover::before { opacity: .35; }
+.quiz-card:active { transform: translateY(-2px) scale(1.01); }
+.quiz-card:disabled { opacity: .5; cursor: default; transform: none; }
+
+.qc-icon { align-self: flex-start; font-size: 42px; line-height: 1; margin-bottom: 4px;
+  filter: drop-shadow(0 6px 14px rgba(0,0,0,.45));
+  transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+.quiz-card:hover .qc-icon { transform: scale(1.2) rotate(-7deg); }
+.qc-icon.sm { font-size: 28px; margin: 0; }
+.qc-tag { font-size: 10.5px; letter-spacing: 1.6px; text-transform: uppercase; font-weight: 800; color: var(--c1); }
+.qc-title { font-size: 22px; font-weight: 800; letter-spacing: .2px; }
+.qc-blurb { font-size: 13px; color: var(--ink-dim); line-height: 1.45; }
+.qc-go { margin-top: 10px; font-size: 13px; font-weight: 800; color: var(--ink-faint);
+  transition: color .2s, transform .2s; }
+.quiz-card:hover .qc-go { color: var(--c1); transform: translateX(5px); }
+
+/* ---------- Drill-down settings ---------- */
+.settings-back { background: none; border: 0; padding: 0 0 14px; cursor: pointer;
+  color: var(--ink-dim); font-size: 13px; font-weight: 600; }
+.settings-back:hover { color: var(--ink); }
+.settings-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.settings-head h2 { margin: 0; font-size: 23px; font-weight: 800; letter-spacing: .2px; }
+.hint-line { font-size: 12px; color: var(--ink-faint); margin: 9px 2px 0; line-height: 1.45; }
+.btn-go { font-size: 15px; padding: 14px; }
 .menu-hero .logo {
   width: 64px; height: 64px; border-radius: 18px; margin: 0 auto 14px;
   background: conic-gradient(from 210deg, var(--accent), var(--accent-2), var(--accent-3), var(--accent));
@@ -76,7 +131,8 @@ button { font-family: inherit; cursor: pointer; }
 }
 .menu-hero h1 { font-size: 34px; margin: 0; font-weight: 800; letter-spacing: .3px; }
 .menu-hero h1 span { color: var(--ink-dim); font-weight: 600; font-size: 18px; }
-.menu-hero p { color: var(--ink-dim); margin: 8px 0 0; font-size: 14px; }
+.menu-hero p { color: var(--ink-dim); margin: 8px auto 0; font-size: 14px;
+  max-width: 460px; min-height: 20px; }
 .menu-card {
   width: min(560px, 100%);
   background: var(--panel); backdrop-filter: blur(16px);

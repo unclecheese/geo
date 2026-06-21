@@ -62,16 +62,22 @@ export interface HistoryEntry {
   t: number;
 }
 
+/** Puzzle difficulty: easy = names shown; hard = name on placement;
+ *  expert = name the country and its capital on placement. */
+export type BuildDifficulty = "easy" | "hard" | "expert";
+
 export interface Settings {
   modes: ModeId[];
   region: string;
   subregion: string;
-  session: string;
+  session: string; // "round" (fixed count) | "around" (around the world — every country)
   roundLen: number;
   timed: boolean;
   sound: boolean;
   heatmap: boolean;
-  showNames: boolean;
+  showNames: boolean; // easy puzzle: labelled tiles (derived from buildDifficulty)
+  buildDifficulty: BuildDifficulty;
+  rotateRandom: boolean; // puzzle: randomise piece rotation (option only — not wired yet)
 }
 
 export interface Stats {

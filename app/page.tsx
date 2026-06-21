@@ -6,7 +6,7 @@ import { MODES } from "@/lib/modes";
 import { Logic } from "@/lib/logic";
 import { DataLayer } from "@/lib/data-layer";
 import { BuildGraph } from "@/lib/build-graph";
-import type { ModeGroup, ModeId } from "@/lib/types";
+import type { BuildDifficulty, ModeGroup, ModeId } from "@/lib/types";
 import { useAtlasStore } from "@/store/atlas-store";
 import { useHydrated } from "@/lib/use-hydrated";
 import { useData } from "@/components/DataProvider";
@@ -14,10 +14,21 @@ import { Audio2 } from "@/lib/fx";
 import { toast } from "@/store/toast-store";
 import { StatsDashboard } from "@/components/StatsDashboard";
 
-const GROUP_TITLES: { group: ModeGroup; title: string }[] = [
-  { group: "map", title: "On the world map" },
-  { group: "expert", title: "Expert mode · no map" },
-  { group: "build", title: "Build a continent" },
+// The three quiz families, each a card on the landing screen.
+type CardType = ModeGroup; // "map" | "expert" | "build"
+const CARDS: { type: CardType; icon: string; title: string; tag: string; blurb: string }[] = [
+  { type: "map",    icon: "🗺️", title: "Map identification", tag: "Find it · name it",   blurb: "Pin a country on the world map, or name the one that's glowing." },
+  { type: "expert", icon: "🚩", title: "Quiz",               tag: "Flags · capitals",    blurb: "Rapid-fire flags and capitals. No map — just recall." },
+  { type: "build",  icon: "🧩", title: "Puzzle",             tag: "Build a continent",   blurb: "Drag every country into place and rebuild a continent." },
+];
+
+const MAP_MODES: ModeId[] = ["find", "name"];
+const QUIZ_MODES: ModeId[] = ["capital", "flag"];
+
+const DIFFICULTY: { id: BuildDifficulty; label: string; blurb: string }[] = [
+  { id: "easy",   label: "Easy",      blurb: "Country names are shown on the tiles." },
+  { id: "hard",   label: "Difficult", blurb: "No names — name each country as you place it." },
+  { id: "expert", label: "Expert",    blurb: "No names — name the country and its capital on placement." },
 ];
 
 export default function MenuPage() {
@@ -31,15 +42,13 @@ export default function MenuPage() {
   const importState = useAtlasStore((s) => s.importState);
   const resetProgress = useAtlasStore((s) => s.resetProgress);
 
+  const [selected, setSelected] = useState<CardType | null>(null);
   const [showStats, setShowStats] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // The active mode group is the one all selected modes share.
-  const currentGroup: ModeGroup =
-    settings.modes.length && MODES[settings.modes[0]] ? MODES[settings.modes[0]].group : "map";
-  const isBuild = currentGroup === "build";
+  const isBuild = selected === "build";
 
-  // Region options depend on group: build is restricted to supported continents.
+  // Region options: build is restricted to supported continents (no "all").
   const allRegions = ready
     ? Array.from(new Set(DataLayer.countries.map((c) => c.region))).sort()
     : [];
@@ -53,29 +62,45 @@ export default function MenuPage() {
         )
       ).sort()
     : [];
+  const showSubregion = settings.region !== "all"; // hidden for "all continents"
 
+  // Open a card → normalise the mode set to that family and show its settings.
+  const openCard = (type: CardType) => {
+    Audio2.ensure();
+    const patch: Partial<typeof settings> = {};
+    if (type === "map") {
+      const keep = settings.modes.filter((m) => MAP_MODES.includes(m));
+      patch.modes = keep.length ? keep : ["find", "name"];
+    } else if (type === "expert") {
+      const keep = settings.modes.filter((m) => QUIZ_MODES.includes(m));
+      patch.modes = keep.length ? keep : ["capital", "flag"];
+    } else {
+      patch.modes = ["build"];
+      if (!(BuildGraph.SUPPORTED as readonly string[]).includes(settings.region)) {
+        patch.region = BuildGraph.SUPPORTED[0];
+        patch.subregion = "all";
+      }
+    }
+    setSettings(patch);
+    setSelected(type);
+  };
+
+  // Toggle a mode within the active family — never below one selected.
   const toggleMode = (id: ModeId) => {
-    const grp = MODES[id].group;
-    const set = new Set(settings.modes);
-    const curGrp = set.size ? MODES[[...set][0]].group : grp;
-    if (curGrp !== grp) set.clear();
+    const group = MODES[id].group;
+    const set = new Set(settings.modes.filter((m) => MODES[m]?.group === group));
     if (set.has(id)) {
       if (set.size > 1) set.delete(id);
     } else {
       set.add(id);
     }
-    const modes = [...set];
-    const patch: Partial<typeof settings> = { modes };
-    // Switching into build coerces the region to a supported continent.
-    if (grp === "build" && !(BuildGraph.SUPPORTED as readonly string[]).includes(settings.region)) {
-      patch.region = BuildGraph.SUPPORTED[0];
-    }
-    setSettings(patch);
+    setSettings({ modes: [...set] });
   };
 
-  const onRegionChange = (region: string) => {
-    setSettings({ region, subregion: "all" });
-  };
+  const onRegionChange = (region: string) => setSettings({ region, subregion: "all" });
+
+  const setDifficulty = (d: BuildDifficulty) =>
+    setSettings({ buildDifficulty: d, showNames: d === "easy" });
 
   const start = () => {
     Audio2.ensure();
@@ -121,167 +146,177 @@ export default function MenuPage() {
   const toggleSound = () => {
     const next = !settings.sound;
     setSettings({ sound: next });
-    if (next) {
-      Audio2.ensure();
-      Audio2.correct();
-    }
+    if (next) { Audio2.ensure(); Audio2.correct(); }
   };
 
-  const onSet = new Set(settings.modes);
+  const modeOn = (id: ModeId) => hydrated && settings.modes.includes(id);
+  const card = CARDS.find((c) => c.type === selected);
+
+  /* ---- shared sub-blocks ---- */
+  const RegionBlock = (
+    <>
+      <div className="section">
+        <h3>{isBuild ? "Continent" : "Region"}</h3>
+        <select value={settings.region} onChange={(e) => onRegionChange(e.target.value)} disabled={!ready}>
+          {!isBuild && <option value="all">All continents</option>}
+          {regionOptions.map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+      </div>
+      {showSubregion && (
+        <div className="section">
+          <h3>Subregion</h3>
+          <select
+            value={subOptions.includes(settings.subregion) ? settings.subregion : "all"}
+            onChange={(e) => setSettings({ subregion: e.target.value })}
+            disabled={!ready}
+          >
+            <option value="all">{isBuild ? `All of ${settings.region}` : "All subregions"}</option>
+            {subOptions.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+      )}
+    </>
+  );
+
+  const LengthBlock = (
+    <div className="section">
+      <h3>Length</h3>
+      <div className="seg">
+        <button className={hydrated && settings.session === "round" ? "on" : ""} onClick={() => setSettings({ session: "round" })}>
+          Set number
+        </button>
+        <button className={hydrated && settings.session === "around" ? "on" : ""} onClick={() => setSettings({ session: "around" })}>
+          Around the world 🌍
+        </button>
+      </div>
+      {settings.session === "round" && (
+        <div className="row" style={{ marginTop: 10 }}>
+          <span style={{ fontSize: "12.5px", color: "var(--ink-dim)", flex: 1 }}>Questions</span>
+          <select style={{ width: 90 }} value={settings.roundLen} onChange={(e) => setSettings({ roundLen: +e.target.value })}>
+            <option>10</option>
+            <option>15</option>
+            <option>20</option>
+          </select>
+        </div>
+      )}
+      {settings.session === "around" && (
+        <p className="hint-line">Every country in your selection, once. The lap ends when you&apos;ve seen them all.</p>
+      )}
+      <label className="toggle">
+        <div>Session timer <small>Times your whole run — answer at your own pace</small></div>
+        <span className="switch">
+          <input type="checkbox" checked={hydrated ? settings.timed : false} onChange={(e) => setSettings({ timed: e.target.checked })} />
+          <span />
+        </span>
+      </label>
+    </div>
+  );
 
   return (
     <section className="screen-menu">
       <div className="menu-hero">
         <div className="logo" />
-        <h1>
-          Atlas <span>· geography trainer</span>
-        </h1>
-        <p>Pick a quiz, set your parameters, and go.</p>
+        <h1>Atlas</h1>
+        <p>{selected ? card?.blurb : "Learn the world. Pick how you want to play."}</p>
       </div>
 
-      <div className="menu-card">
-        <div className="section">
-          <h3>Choose your quiz</h3>
-          {GROUP_TITLES.map(({ group, title }) => (
-            <div className="mode-group" key={group}>
-              <h4>{title}</h4>
-              <div className="chips">
-                {Object.values(MODES)
-                  .filter((m) => m.group === group)
-                  .map((m) => (
-                    <button
-                      key={m.id}
-                      className={"chip" + (hydrated && onSet.has(m.id) ? " on" : "")}
-                      onClick={() => toggleMode(m.id)}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-              </div>
-            </div>
+      {/* Landing: the three quiz cards */}
+      {!selected && (
+        <div className="quiz-cards">
+          {CARDS.map((c) => (
+            <button key={c.type} className={`quiz-card qc-${c.type}`} onClick={() => openCard(c.type)} disabled={!ready}>
+              <span className="qc-icon" aria-hidden>{c.icon}</span>
+              <span className="qc-tag">{c.tag}</span>
+              <span className="qc-title">{c.title}</span>
+              <span className="qc-blurb">{c.blurb}</span>
+              <span className="qc-go">Play ▸</span>
+            </button>
           ))}
         </div>
+      )}
 
-        <div className="section">
-          <h3>Continent</h3>
-          <select
-            value={settings.region}
-            onChange={(e) => onRegionChange(e.target.value)}
-            disabled={!ready}
-          >
-            {!isBuild && <option value="all">All continents</option>}
-            {regionOptions.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {!isBuild && (
-          <div className="section">
-            <h3>Subregion</h3>
-            <select
-              value={subOptions.includes(settings.subregion) ? settings.subregion : "all"}
-              onChange={(e) => setSettings({ subregion: e.target.value })}
-              disabled={!ready}
-            >
-              <option value="all">All subregions</option>
-              {subOptions.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+      {/* Drill-down: settings for the chosen card */}
+      {selected && (
+        <div className="menu-card">
+          <button className="settings-back" onClick={() => setSelected(null)}>← All quizzes</button>
+          <div className="settings-head">
+            <span className="qc-icon sm" aria-hidden>{card?.icon}</span>
+            <h2>{card?.title}</h2>
           </div>
-        )}
 
-        {!isBuild && (
-          <div className="section">
-            <h3>Session</h3>
-            <div className="seg">
-              {(["round", "endless"] as const).map((v) => (
-                <button
-                  key={v}
-                  className={hydrated && settings.session === v ? "on" : ""}
-                  onClick={() => setSettings({ session: v })}
-                >
-                  {v === "round" ? "Round" : "Endless"}
-                </button>
-              ))}
-            </div>
-            <div
-              className="row"
-              style={{ marginTop: 8, opacity: settings.session === "round" ? 1 : 0.4 }}
-            >
-              <span style={{ fontSize: "12.5px", color: "var(--ink-dim)", flex: 1 }}>Questions</span>
-              <select
-                style={{ width: 90 }}
-                value={settings.roundLen}
-                onChange={(e) => setSettings({ roundLen: +e.target.value })}
-              >
-                <option>10</option>
-                <option>15</option>
-                <option>20</option>
-              </select>
-            </div>
-            <label className="toggle">
-              <div>
-                Session timer{" "}
-                <small>Times your whole run — answer at your own pace</small>
+          {selected === "map" && (
+            <div className="section">
+              <h3>What to test</h3>
+              <div className="chips">
+                <button className={"chip" + (modeOn("find") ? " on" : "")} onClick={() => toggleMode("find")}>📍 Find on map</button>
+                <button className={"chip" + (modeOn("name") ? " on" : "")} onClick={() => toggleMode("name")}>🏷️ Name the country</button>
               </div>
-              <span className="switch">
-                <input
-                  type="checkbox"
-                  checked={hydrated ? settings.timed : false}
-                  onChange={(e) => setSettings({ timed: e.target.checked })}
-                />
-                <span />
-              </span>
-            </label>
-          </div>
-        )}
+            </div>
+          )}
 
-        {isBuild && (
-          <div className="section">
-            <h3>Session</h3>
-            <label className="toggle">
-              <div>
-                Show names{" "}
-                <small>Off: name each country after placing it to earn credit</small>
+          {selected === "expert" && (
+            <div className="section">
+              <h3>What to test</h3>
+              <div className="chips">
+                <button className={"chip" + (modeOn("flag") ? " on" : "")} onClick={() => toggleMode("flag")}>🚩 Flags</button>
+                <button className={"chip" + (modeOn("capital") ? " on" : "")} onClick={() => toggleMode("capital")}>🏛️ Capitals</button>
               </div>
-              <span className="switch">
-                <input
-                  type="checkbox"
-                  checked={hydrated ? settings.showNames : true}
-                  onChange={(e) => setSettings({ showNames: e.target.checked })}
-                />
-                <span />
-              </span>
-            </label>
-          </div>
-        )}
+            </div>
+          )}
 
-        <div className="section" style={{ marginBottom: 0 }}>
-          <button className="btn" onClick={start} disabled={!ready}>
-            {isBuild ? "Build continent ▸" : "Start session ▸"}
-          </button>
+          {RegionBlock}
+
+          {!isBuild && LengthBlock}
+
+          {isBuild && (
+            <>
+              <div className="section">
+                <h3>Difficulty</h3>
+                <div className="seg seg-3">
+                  {DIFFICULTY.map((d) => (
+                    <button key={d.id} className={hydrated && settings.buildDifficulty === d.id ? "on" : ""} onClick={() => setDifficulty(d.id)}>
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="hint-line">{DIFFICULTY.find((d) => d.id === settings.buildDifficulty)?.blurb}</p>
+              </div>
+              <div className="section">
+                <label className="toggle">
+                  <div>Randomise rotation <small>Pieces start rotated — you straighten them (coming soon)</small></div>
+                  <span className="switch">
+                    <input type="checkbox" checked={hydrated ? settings.rotateRandom : false} onChange={(e) => setSettings({ rotateRandom: e.target.checked })} />
+                    <span />
+                  </span>
+                </label>
+                <label className="toggle">
+                  <div>Session timer <small>Times your whole build</small></div>
+                  <span className="switch">
+                    <input type="checkbox" checked={hydrated ? settings.timed : false} onChange={(e) => setSettings({ timed: e.target.checked })} />
+                    <span />
+                  </span>
+                </label>
+              </div>
+            </>
+          )}
+
+          <div className="section" style={{ marginBottom: 0 }}>
+            <button className="btn btn-go" onClick={start} disabled={!ready}>
+              {isBuild ? "Build it ▸" : "Start ▸"}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="menu-footer">
-        <button className="btn ghost small" onClick={() => setShowStats(true)}>
-          📊 Stats
-        </button>
-        <button className="btn ghost small" onClick={doExport}>
-          Export
-        </button>
-        <button className="btn ghost small" onClick={() => fileRef.current?.click()}>
-          Import
-        </button>
-        <button className="btn ghost small" title="Reset all progress" onClick={doReset}>
-          Reset
-        </button>
+        <button className="btn ghost small" onClick={() => setShowStats(true)}>📊 Stats</button>
+        <button className="btn ghost small" onClick={doExport}>Export</button>
+        <button className="btn ghost small" onClick={() => fileRef.current?.click()}>Import</button>
+        <button className="btn ghost small" title="Reset all progress" onClick={doReset}>Reset</button>
         <button
           className={"btn ghost small" + (hydrated && settings.sound ? " active" : "")}
           title={"Sound (" + (settings.sound ? "on" : "off") + ")"}
@@ -289,13 +324,7 @@ export default function MenuPage() {
         >
           {hydrated && settings.sound ? "🔊" : "🔇"}
         </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/json"
-          hidden
-          onChange={(e) => doImport(e.target.files?.[0])}
-        />
+        <input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => doImport(e.target.files?.[0])} />
       </div>
 
       <StatsDashboard open={showStats} onClose={() => setShowStats(false)} />
