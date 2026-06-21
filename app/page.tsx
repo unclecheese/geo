@@ -227,8 +227,9 @@ export default function MenuPage() {
       {/* Landing: the three quiz cards */}
       {!selected && (
         <div className="quiz-cards">
-          {CARDS.map((c) => (
+          {CARDS.map((c, i) => (
             <button key={c.type} className={`quiz-card qc-${c.type}`} onClick={() => openCard(c.type)} disabled={!ready}>
+              <span className="qc-no" aria-hidden>{String(i + 1).padStart(2, "0")}</span>
               <span className="qc-icon" aria-hidden>{c.icon}</span>
               <span className="qc-tag">{c.tag}</span>
               <span className="qc-title">{c.title}</span>
