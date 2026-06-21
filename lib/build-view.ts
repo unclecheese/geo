@@ -6,6 +6,7 @@ import {
   geoMercator,
   geoPath,
   geoArea,
+  geoCentroid,
   zoom,
   zoomIdentity,
   pointer,
@@ -220,37 +221,9 @@ export const BuildView = {
 
     this._buildOverrides();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const geoms = (topo as any).objects.countries.geometries as Array<{ id: string | number }>;
-    const placeableCcn3 = new Set(
-      this.model.graph.placeable.map((c) => c.ccn3).filter(Boolean)
-    );
-    // Dissolve the placeable set into one silhouette — but exclude any country
-    // we override geometry for (Russia), since topojson.merge can only see the
-    // raw arcs. Overridden silhouettes are appended as their own paths below.
-    const overrideCcn3 = new Set(
-      [...this._override.keys()]
-        .map((id) => DataLayer.byCcn3.get(id)?.ccn3)
-        .filter(Boolean) as string[]
-    );
-    const memberGeoms = geoms.filter(
-      (g) => placeableCcn3.has(DataLayer.pad3(g.id)) && !overrideCcn3.has(DataLayer.pad3(g.id))
-    );
-    const merged = topoMerge(topo, memberGeoms as never);
-
-    // Extra silhouette outlines for overridden countries (European Russia) plus
-    // the Crimea sliver, so the backdrop matches the tiles you actually place.
-    const extraSil: Feature[] = [];
-    if (this.model.continent === "Europe") {
-      const ruFeat = this._override.get(RU_CCN3);
-      if (ruFeat) extraSil.push(ruFeat);
-      const ru = DataLayer.byCcn3.get(RU_CCN3);
-      const crimea = ru?.feature ? crimeaPolygon(ru.feature) : null;
-      if (crimea) extraSil.push({ type: "Feature", properties: null, geometry: { type: "Polygon", coordinates: crimea } });
-    }
-
     // Frame on main landmasses only (displayFeature) so Hawaii/Aleutians
-    // don't shrink the whole continent.
+    // don't shrink the whole continent. Measured before enlargement so a blown-up
+    // microstate can't expand the frame.
     const displayFeatures = this.model.graph.placeable
       .filter((c) => c.feature)
       .map((c) => this._displayFeature(c));
@@ -274,6 +247,40 @@ export const BuildView = {
     this.extent = Math.hypot(b[1][0] - b[0][0], b[1][1] - b[0][1]);
     this.centroidRadius = 0.05 * this.extent;
 
+    // Enlarge any country too small to drop onto (e.g. Vatican, sub-pixel inside
+    // Rome). Scaled about its own centroid so its true position is unchanged.
+    const enlarged = this._enlargeTinyCountries();
+
+    // Dissolve the placeable set into one silhouette — excluding countries we
+    // draw with custom geometry (clipped Russia, the enlarged microstates),
+    // which topojson.merge can't see. Ukraine stays in the merge; its Crimea is
+    // drawn as a separate sliver below.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geoms = (topo as any).objects.countries.geometries as Array<{ id: string | number }>;
+    const placeableCcn3 = new Set(
+      this.model.graph.placeable.map((c) => c.ccn3).filter(Boolean)
+    );
+    const silExclude = new Set<string>(
+      [...enlarged].map((id) => DataLayer.byCcn3.get(id)?.ccn3).filter(Boolean) as string[]
+    );
+    const ru = DataLayer.byCcn3.get(RU_CCN3);
+    if (this.model.continent === "Europe" && ru?.ccn3) silExclude.add(ru.ccn3);
+
+    const memberGeoms = geoms.filter(
+      (g) => placeableCcn3.has(DataLayer.pad3(g.id)) && !silExclude.has(DataLayer.pad3(g.id))
+    );
+    const merged = topoMerge(topo, memberGeoms as never);
+
+    // Custom silhouette outlines: European Russia + the Crimea sliver, plus the
+    // enlarged microstates, so the backdrop matches the pieces you place.
+    const extraSil: Feature[] = [...enlarged].map((id) => this._override.get(id)!).filter(Boolean);
+    if (this.model.continent === "Europe") {
+      const ruFeat = this._override.get(RU_CCN3);
+      if (ruFeat) extraSil.push(ruFeat);
+      const crimea = ru?.feature ? crimeaPolygon(ru.feature) : null;
+      if (crimea) extraSil.push({ type: "Feature", properties: null, geometry: { type: "Polygon", coordinates: crimea } });
+    }
+
     this.gSil!.selectAll("path")
       .data([merged, ...extraSil])
       .join("path")
@@ -281,6 +288,41 @@ export const BuildView = {
       .attr("d", this.path as never);
 
     this._redrawPlaced();
+  },
+
+  // Blow up any placeable country whose projected footprint is smaller than a
+  // comfortably-draggable size, scaling about its centroid (true position kept).
+  // Records the enlarged feature in _override and returns the set of ids touched.
+  _enlargeTinyCountries(): Set<string> {
+    const MIN_PX = 24; // minimum on-screen diagonal for a piece you can target
+    const enlarged = new Set<string>();
+    if (!this.path) return enlarged;
+    for (const c of this.model!.graph.placeable) {
+      if (!c.feature || this._override.has(c.id)) continue;
+      const disp = this._displayFeature(c);
+      const bb = this.path.bounds(disp);
+      const dpx = Math.hypot(bb[1][0] - bb[0][0], bb[1][1] - bb[0][1]);
+      if (isFinite(dpx) && dpx > 0 && dpx < MIN_PX) {
+        this._override.set(c.id, this._scaleFeature(disp, MIN_PX / dpx));
+        enlarged.add(c.id);
+      }
+    }
+    return enlarged;
+  },
+
+  // Scale a feature's geometry about its geographic centroid by `factor`.
+  _scaleFeature(feature: Feature, factor: number): Feature {
+    const [cx, cy] = geoCentroid(feature);
+    const scaleRing = (ring: number[][]) =>
+      ring.map(([x, y]) => [cx + (x - cx) * factor, cy + (y - cy) * factor]);
+    const g = feature.geometry;
+    let geometry = g;
+    if (g.type === "Polygon") {
+      geometry = { type: "Polygon", coordinates: g.coordinates.map(scaleRing) };
+    } else if (g.type === "MultiPolygon") {
+      geometry = { type: "MultiPolygon", coordinates: g.coordinates.map((p) => p.map(scaleRing)) };
+    }
+    return { type: "Feature", id: feature.id, properties: feature.properties, geometry };
   },
 
   // Main landmass only — drops polygons smaller than ~18% of the largest.
