@@ -269,15 +269,19 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     if (chosenMode === "find" || chosenMode === "name") {
       import("@/lib/map-view").then(({ MapView }) => {
         if (!MapView._inited) return;
-        // Zoom in for tiny countries; otherwise zoom back out from the previous
-        // question so the map doesn't stay stuck zoomed in.
-        if (MapView.tinyIds.has(item!.id)) MapView.frameCountry(item!, 0.5);
-        else MapView.reset();
-        // Name mode highlights the target — add an arrow so a tiny highlighted
-        // country is easy to spot. (Find mode must not reveal the answer.)
         if (chosenMode === "name") {
+          // Name mode highlights the target, so the answer is already shown.
+          // Frame tiny countries and drop an arrow so they're easy to spot.
+          if (MapView.tinyIds.has(item!.id)) MapView.frameCountry(item!, 0.5);
+          else MapView.reset();
           MapView.paint(item!.id, "target");
           MapView.markArrow(item!);
+        } else {
+          // Find mode: the player must locate the country themselves, so never
+          // auto-zoom to it — that would reveal the answer. Just reset any zoom
+          // left over from the previous question; they double-click to zoom in
+          // and hunt for small countries.
+          MapView.reset();
         }
       });
     }

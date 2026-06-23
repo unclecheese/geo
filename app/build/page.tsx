@@ -80,6 +80,11 @@ export default function BuildPage() {
       {/* Full-viewport builder (SVG + bank + banner + name prompt) */}
       <BuildViewComponent />
 
+      {/* Persistent zoom tip (bottom-right, clear of banner/bank/name prompt) */}
+      <div className="map-tip tip-br" role="note">
+        <span aria-hidden>🔍</span> Double-click anywhere to zoom and centre on that area.
+      </div>
+
       {/* Screen-top bar */}
       <div className="screen-top">
         <div className="st-left">

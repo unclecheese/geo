@@ -423,6 +423,8 @@ svg.spark { width: 100%; height: 70px; display: block; }
   white-space: nowrap;
   background: color-mix(in srgb, var(--paper) 86%, transparent);
   border: 1px solid var(--hair); box-shadow: var(--shadow); backdrop-filter: blur(4px); }
+/* bottom-right placement (puzzle: top-centre & bottom-centre are taken) */
+.map-tip.tip-br { left: auto; right: 16px; top: auto; bottom: 16px; transform: none; }
 @media (max-width: 640px) { .map-tip { display: none; } }
 
 /* arrow pointing at the highlighted/target country */
