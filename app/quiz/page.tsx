@@ -85,7 +85,7 @@ export default function QuizPage() {
           </button>
           <div className="brand sm">
             <div className="logo" />
-            <h1>Atlas</h1>
+            <h1>GeoBean</h1>
           </div>
         </div>
       </div>

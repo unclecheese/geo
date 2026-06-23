@@ -117,7 +117,7 @@ export default function MenuPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "atlas-progress.json";
+    a.download = "geobean-progress.json";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -220,7 +220,7 @@ export default function MenuPage() {
     <section className="screen-menu">
       <div className="menu-hero">
         <div className="logo" />
-        <h1>Atlas</h1>
+        <h1>GeoBean</h1>
         <p>{selected ? card?.blurb : "Learn the world. Pick how you want to play."}</p>
       </div>
 

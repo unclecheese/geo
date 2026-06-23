@@ -23,7 +23,7 @@ const body = Spectral({
 });
 
 export const metadata: Metadata = {
-  title: "Atlas — Geography Trainer",
+  title: "GeoBean — Geography Trainer",
   description: "Learn world geography with map quizzes, spaced repetition, and a continent builder.",
 };
 

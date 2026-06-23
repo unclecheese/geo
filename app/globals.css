@@ -90,21 +90,21 @@ button { font-family: inherit; cursor: pointer; }
 /* ---------- Brand (on navy → cream) ---------- */
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand .logo {
-  width: 34px; height: 34px; border-radius: 7px; flex: none;
-  background: linear-gradient(150deg, var(--accent), var(--accent-2));
-  box-shadow: inset 0 0 0 1.5px rgba(237, 228, 209, .5), 0 4px 14px rgba(0, 0, 0, .35);
+  width: 34px; height: 34px; flex: none;
+  background: url(/geobean.svg) center / contain no-repeat;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .35));
 }
 .brand h1 { font-family: var(--ff-display); font-size: 21px; margin: 0; letter-spacing: .2px; font-weight: 800; color: var(--cream); }
 .brand h1 span { color: var(--cream-dim); font-weight: 600; }
 .brand.sm h1 { font-size: 18px; }
-.brand.sm .logo { width: 28px; height: 28px; border-radius: 6px; }
+.brand.sm .logo { width: 28px; height: 28px; }
 
 /* ---------- Menu / splash ---------- */
 .menu-hero { text-align: center; margin-bottom: 34px; }
 .menu-hero .logo {
-  width: 60px; height: 60px; border-radius: 12px; margin: 0 auto 16px;
-  background: linear-gradient(150deg, var(--accent), var(--accent-2));
-  box-shadow: inset 0 0 0 2px rgba(237, 228, 209, .55), 0 10px 28px rgba(0, 0, 0, .4);
+  width: 72px; height: 72px; margin: 0 auto 16px;
+  background: url(/geobean.svg) center / contain no-repeat;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .4));
 }
 .menu-hero h1 {
   font-family: var(--ff-display); font-size: clamp(34px, 6vw, 48px); margin: 0;

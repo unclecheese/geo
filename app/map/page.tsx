@@ -121,7 +121,7 @@ export default function MapPage() {
           <button className="icon-btn" title="Back to menu" onClick={backToMenu}>←</button>
           <div className="brand sm">
             <div className="logo" />
-            <h1>Atlas</h1>
+            <h1>GeoBean</h1>
           </div>
         </div>
         <div className="st-right">
