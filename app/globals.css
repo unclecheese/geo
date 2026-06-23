@@ -225,16 +225,6 @@ button { font-family: inherit; cursor: pointer; }
 .section { margin-bottom: 18px; }
 .section:last-child { margin-bottom: 4px; }
 .section h3 { margin: 0 0 9px; font-size: 12.5px; color: var(--accent-2); }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip {
-  font-size: 13px; padding: 8px 13px; border-radius: 999px;
-  border: 1px solid var(--hair); background: var(--paper-2);
-  color: var(--ink-dim); transition: all .14s ease; user-select: none;
-}
-.chip:hover { color: var(--ink); border-color: var(--accent); }
-.chip.on {
-  background: var(--accent-soft); color: var(--ink); border-color: var(--accent); font-weight: 600;
-}
 select, .field {
   width: 100%; padding: 11px 12px; border-radius: var(--radius-sm);
   background: var(--paper-2); color: var(--ink); border: 1px solid var(--hair);

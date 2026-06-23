@@ -85,15 +85,13 @@ export default function MenuPage() {
     setSelected(type);
   };
 
-  // Toggle a mode within the active family — never below one selected.
+  // Toggle a mode within the active family. May leave zero selected — the Start
+  // button is disabled in that case (see `noModes`).
   const toggleMode = (id: ModeId) => {
     const group = MODES[id].group;
     const set = new Set(settings.modes.filter((m) => MODES[m]?.group === group));
-    if (set.has(id)) {
-      if (set.size > 1) set.delete(id);
-    } else {
-      set.add(id);
-    }
+    if (set.has(id)) set.delete(id);
+    else set.add(id);
     setSettings({ modes: [...set] });
   };
 
@@ -151,6 +149,12 @@ export default function MenuPage() {
 
   const modeOn = (id: ModeId) => hydrated && settings.modes.includes(id);
   const card = CARDS.find((c) => c.type === selected);
+
+  // Map/Quiz require at least one mode switched on; build always has "build".
+  const noModes =
+    hydrated &&
+    (selected === "map" || selected === "expert") &&
+    !settings.modes.some((m) => MODES[m]?.group === selected);
 
   /* ---- shared sub-blocks ---- */
   const RegionBlock = (
@@ -252,20 +256,42 @@ export default function MenuPage() {
           {selected === "map" && (
             <div className="section">
               <h3>What to test</h3>
-              <div className="chips">
-                <button className={"chip" + (modeOn("find") ? " on" : "")} onClick={() => toggleMode("find")}>📍 Find on map</button>
-                <button className={"chip" + (modeOn("name") ? " on" : "")} onClick={() => toggleMode("name")}>🏷️ Name the country</button>
-              </div>
+              <label className="toggle">
+                <div>📍 Find on map <small>Pin the named country on the world map</small></div>
+                <span className="switch">
+                  <input type="checkbox" checked={modeOn("find")} onChange={() => toggleMode("find")} />
+                  <span />
+                </span>
+              </label>
+              <label className="toggle">
+                <div>🏷️ Name the country <small>Name the country that&apos;s glowing</small></div>
+                <span className="switch">
+                  <input type="checkbox" checked={modeOn("name")} onChange={() => toggleMode("name")} />
+                  <span />
+                </span>
+              </label>
+              {noModes && <p className="hint-line">Switch on at least one to start.</p>}
             </div>
           )}
 
           {selected === "expert" && (
             <div className="section">
               <h3>What to test</h3>
-              <div className="chips">
-                <button className={"chip" + (modeOn("flag") ? " on" : "")} onClick={() => toggleMode("flag")}>🚩 Flags</button>
-                <button className={"chip" + (modeOn("capital") ? " on" : "")} onClick={() => toggleMode("capital")}>🏛️ Capitals</button>
-              </div>
+              <label className="toggle">
+                <div>🚩 Flags <small>Identify the country from its flag</small></div>
+                <span className="switch">
+                  <input type="checkbox" checked={modeOn("flag")} onChange={() => toggleMode("flag")} />
+                  <span />
+                </span>
+              </label>
+              <label className="toggle">
+                <div>🏛️ Capitals <small>Name each country&apos;s capital city</small></div>
+                <span className="switch">
+                  <input type="checkbox" checked={modeOn("capital")} onChange={() => toggleMode("capital")} />
+                  <span />
+                </span>
+              </label>
+              {noModes && <p className="hint-line">Switch on at least one to start.</p>}
             </div>
           )}
 
@@ -306,7 +332,7 @@ export default function MenuPage() {
           )}
 
           <div className="section" style={{ marginBottom: 0 }}>
-            <button className="btn btn-go" onClick={start} disabled={!ready}>
+            <button className="btn btn-go" onClick={start} disabled={!ready || noModes}>
               {isBuild ? "Build it ▸" : "Start ▸"}
             </button>
           </div>
