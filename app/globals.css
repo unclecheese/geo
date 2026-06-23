@@ -116,10 +116,9 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ---------- Landing: quiz cards (numbered chapters) ---------- */
 .quiz-cards {
-  width: min(980px, 100%);
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
+  width: min(620px, 100%);
+  display: grid; grid-template-columns: 1fr; gap: 16px;
 }
-@media (max-width: 780px) { .quiz-cards { grid-template-columns: 1fr; } }
 
 .qc-map, .qc-expert, .qc-build { --c1: var(--accent); }
 
@@ -135,10 +134,11 @@ button { font-family: inherit; cursor: pointer; }
 .quiz-card:active { transform: translateY(-1px); }
 .quiz-card:disabled { opacity: .55; cursor: default; transform: none; }
 
-.qc-no { grid-row: 1 / span 4; align-self: start; font-family: var(--ff-display);
-  font-size: 38px; font-weight: 800; line-height: .9; color: var(--accent);
-  font-variant-numeric: tabular-nums; }
-.qc-icon { display: none; }            /* chapters lead with numbers, not emoji */
+.qc-no { position: absolute; top: 16px; right: 18px; font-family: var(--ff-display);
+  font-size: 22px; font-weight: 800; line-height: 1; color: var(--accent);
+  opacity: .35; font-variant-numeric: tabular-nums; }
+.qc-icon { display: block; grid-row: 1 / span 4; align-self: center;
+  font-size: 40px; line-height: 1; }   /* each option leads with its icon */
 .qc-tag { font-size: 13px; color: var(--accent-2); }
 .qc-title { font-family: var(--ff-display); font-size: 21px; font-weight: 700; letter-spacing: 0; line-height: 1.1; margin-top: 1px; }
 .qc-blurb { font-size: 13.5px; color: var(--ink-dim); line-height: 1.5; grid-column: 2; margin-top: 4px; }
@@ -414,6 +414,16 @@ svg.spark { width: 100%; height: 70px; display: block; }
 #map-wrap { position: fixed; inset: 0; }
 #map { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 #map.dragging { cursor: grabbing; }
+
+/* persistent tip: double-click to zoom/centre. Sits top-centre, clear of the
+   bottom HUD and the top bar's left brand / right buttons. */
+.map-tip { position: fixed; left: 50%; top: 16px; transform: translateX(-50%);
+  z-index: 29; pointer-events: none; display: flex; align-items: center; gap: 6px;
+  padding: 7px 13px; border-radius: 999px; font-size: 12.5px; color: var(--ink-dim);
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--paper) 86%, transparent);
+  border: 1px solid var(--hair); box-shadow: var(--shadow); backdrop-filter: blur(4px); }
+@media (max-width: 640px) { .map-tip { display: none; } }
 
 /* arrow pointing at the highlighted/target country */
 .map-arrow { pointer-events: none; }
