@@ -22,9 +22,48 @@ const body = Spectral({
   display: "swap",
 });
 
+// Absolute base for OG/Twitter image URLs. Vercel exposes the production domain
+// via VERCEL_PROJECT_PRODUCTION_URL; fall back to localhost in dev.
+const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  : "http://localhost:3000";
+
+const TITLE = "GeoBean — Geography Trainer";
+const DESCRIPTION =
+  "Learn world geography with map quizzes, spaced repetition, and a continent builder.";
+
 export const metadata: Metadata = {
-  title: "GeoBean — Geography Trainer",
-  description: "Learn world geography with map quizzes, spaced repetition, and a continent builder.",
+  metadataBase: new URL(baseUrl),
+  applicationName: "GeoBean",
+  title: {
+    default: TITLE,
+    template: "%s · GeoBean",
+  },
+  description: DESCRIPTION,
+  keywords: [
+    "geography quiz",
+    "world map game",
+    "learn countries",
+    "capitals quiz",
+    "flags quiz",
+    "continent builder",
+    "spaced repetition",
+  ],
+  openGraph: {
+    type: "website",
+    siteName: "GeoBean",
+    title: TITLE,
+    description: DESCRIPTION,
+    url: "/",
+    locale: "en_US",
+    // og:image is supplied automatically by app/opengraph-image.tsx
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+    // twitter:image is supplied automatically by app/twitter-image.tsx
+  },
 };
 
 export const viewport: Viewport = {
