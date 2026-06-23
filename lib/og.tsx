@@ -35,7 +35,7 @@ export function renderOgImage() {
               GeoBean
             </div>
             <div style={{ fontSize: 36, color: "#9fb3c8", marginTop: 16 }}>
-              Learn the world, one bean at a time
+              Compulsive geography
             </div>
           </div>
         </div>
