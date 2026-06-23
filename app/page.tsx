@@ -17,18 +17,18 @@ import { StatsDashboard } from "@/components/StatsDashboard";
 // The three quiz families, each a card on the landing screen.
 type CardType = ModeGroup; // "map" | "expert" | "build"
 const CARDS: { type: CardType; icon: string; title: string; tag: string; blurb: string }[] = [
-  { type: "map",    icon: "🗺️", title: "Map identification", tag: "Find it · name it",   blurb: "Pin a country on the world map, or name the one that's glowing." },
-  { type: "expert", icon: "🚩", title: "Quiz",               tag: "Flags · capitals",    blurb: "Rapid-fire flags and capitals. No map — just recall." },
-  { type: "build",  icon: "🧩", title: "Puzzle",             tag: "Build a continent",   blurb: "Drag every country into place and rebuild a continent." },
+  { type: "map", icon: "🗺️", title: "Map identification", tag: "Find it · name it", blurb: "Pin a country on the world map, or name the one that's glowing." },
+  { type: "expert", icon: "🚩", title: "Quiz", tag: "Flags · capitals", blurb: "Rapid-fire flags and capitals. No map — just recall." },
+  { type: "build", icon: "🧩", title: "Puzzle", tag: "Build a continent", blurb: "Drag every country into place and rebuild a continent." },
 ];
 
 const MAP_MODES: ModeId[] = ["find", "name"];
 const QUIZ_MODES: ModeId[] = ["capital", "flag"];
 
 const DIFFICULTY: { id: BuildDifficulty; label: string; blurb: string }[] = [
-  { id: "easy",   label: "Easy",      blurb: "Country names are shown on the tiles." },
-  { id: "hard",   label: "Difficult", blurb: "No names — name each country as you place it." },
-  { id: "expert", label: "Expert",    blurb: "No names — name the country and its capital on placement." },
+  { id: "easy", label: "Easy", blurb: "Country names are shown on the tiles." },
+  { id: "hard", label: "Difficult", blurb: "No names — name each country as you place it." },
+  { id: "expert", label: "Expert", blurb: "No names — name the country and its capital on placement." },
 ];
 
 export default function MenuPage() {
@@ -55,12 +55,12 @@ export default function MenuPage() {
   const regionOptions = isBuild ? [...BuildGraph.SUPPORTED] : allRegions;
   const subOptions = ready
     ? Array.from(
-        new Set(
-          DataLayer.countries
-            .filter((c) => settings.region === "all" || c.region === settings.region)
-            .map((c) => c.subregion as string)
-        )
-      ).sort()
+      new Set(
+        DataLayer.countries
+          .filter((c) => settings.region === "all" || c.region === settings.region)
+          .map((c) => c.subregion as string)
+      )
+    ).sort()
     : [];
   const showSubregion = settings.region !== "all"; // hidden for "all continents"
 
@@ -225,7 +225,7 @@ export default function MenuPage() {
       <div className="menu-hero">
         <div className="logo" />
         <h1>GeoBean</h1>
-        <p>{selected ? card?.blurb : "Learn the world. Pick how you want to play."}</p>
+        <p>{selected ? card?.blurb : "Compulsive geography."}</p>
       </div>
 
       {/* Landing: the three quiz cards */}

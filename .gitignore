@@ -22,3 +22,4 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+settings.local.json

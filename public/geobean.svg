@@ -10,18 +10,7 @@
   <path d="M11 32 C11 19 21 12 31 16 C37 18.4 40 24 46 22 C54 19 60 27 58 37 C56 49 44 57 30 55 C17 53 11 44 11 32 Z"
         fill="url(#body)" stroke="#0f3d2e" stroke-width="2" stroke-linejoin="round"/>
   <!-- continents (globe feel) -->
-  <path d="M44 30 c5 -1.5 8 2.5 6 6.5 c-2.4 4 -8.5 2 -8.5 -2.5 c0 -2.6 0 -3.2 2.5 -4 Z" fill="#a7f3d0" opacity="0.75"/>
-  <path d="M21 42 c4.5 -0.4 6.5 4 3.4 7 c-3.2 3 -8.4 0.3 -7.4 -4 c0.4 -1.8 1.4 -2.8 4 -3 Z" fill="#a7f3d0" opacity="0.75"/>
-  <!-- rosy cheeks -->
-  <ellipse cx="24" cy="44" rx="4" ry="2.6" fill="#fb7185" opacity="0.5"/>
-  <ellipse cx="46" cy="44" rx="4" ry="2.6" fill="#fb7185" opacity="0.5"/>
-  <!-- eyes -->
-  <circle cx="29" cy="37" r="4.3" fill="#fff"/>
-  <circle cx="43" cy="37" r="4.3" fill="#fff"/>
-  <circle cx="30" cy="38" r="2.2" fill="#0f3d2e"/>
-  <circle cx="44" cy="38" r="2.2" fill="#0f3d2e"/>
-  <circle cx="30.9" cy="37.1" r="0.75" fill="#fff"/>
-  <circle cx="44.9" cy="37.1" r="0.75" fill="#fff"/>
-  <!-- smile -->
-  <path d="M31 46 Q36 51 41 46" fill="none" stroke="#0f3d2e" stroke-width="2.3" stroke-linecap="round"/>
+  <path d="M40 24 c5 -1.5 8 2.5 6 6.5 c-2.4 4 -8.5 2 -8.5 -2.5 c0 -2.6 0 -3.2 2.5 -4 Z" fill="#a7f3d0" opacity="0.8"/>
+  <path d="M22 40 c4.5 -0.4 6.5 4 3.4 7 c-3.2 3 -8.4 0.3 -7.4 -4 c0.4 -1.8 1.4 -2.8 4 -3 Z" fill="#a7f3d0" opacity="0.8"/>
+  <path d="M32 26 c2.6 -0.3 3.6 2 1.8 3.8 c-1.8 1.7 -4.6 0.2 -4 -2.2 c0.2 -1 0.8 -1.4 2.2 -1.6 Z" fill="#a7f3d0" opacity="0.65"/>
 </svg>
