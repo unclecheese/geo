@@ -23,3 +23,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 settings.local.json
+
+# scratch / temp render files
+scratch_*
