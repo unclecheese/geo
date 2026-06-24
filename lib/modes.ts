@@ -9,7 +9,7 @@ export const MODES: Record<ModeId, Mode> = {
   name:    { id: "name",    label: "Name the country",  group: "map",    map: true,  short: "Name" },
   capital: { id: "capital", label: "Capital",           group: "expert", map: false, short: "Capital" },
   flag:    { id: "flag",    label: "Flag",              group: "expert", map: false, short: "Flag" },
-  border:  { id: "border",  label: "Borders",           group: "expert", map: false, short: "Borders" },
+  border:  { id: "border",  label: "Borders",           group: "borders", map: true,  short: "Borders" },
   build:   { id: "build",   label: "Build a continent", group: "build",  map: false, short: "Build" },
 };
 

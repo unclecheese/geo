@@ -14,11 +14,12 @@ import { Audio2 } from "@/lib/fx";
 import { toast } from "@/store/toast-store";
 import { StatsDashboard } from "@/components/StatsDashboard";
 
-// The three quiz families, each a card on the landing screen.
-type CardType = ModeGroup; // "map" | "expert" | "build"
+// The quiz families, each a card on the landing screen.
+type CardType = ModeGroup; // "map" | "expert" | "borders" | "build"
 const CARDS: { type: CardType; icon: string; title: string; tag: string; blurb: string }[] = [
   { type: "map", icon: "🗺️", title: "Map identification", tag: "Find it · name it", blurb: "Pin a country on the world map, or name the one that's glowing." },
   { type: "expert", icon: "🚩", title: "Quiz", tag: "Flags · capitals", blurb: "Rapid-fire flags and capitals. No map — just recall." },
+  { type: "borders", icon: "🧭", title: "Borders", tag: "Name the neighbours", blurb: "Zoom in on a country and name every one that borders it." },
   { type: "build", icon: "🧩", title: "Puzzle", tag: "Build a continent", blurb: "Drag every country into place and rebuild a continent." },
 ];
 
@@ -74,6 +75,8 @@ export default function MenuPage() {
     } else if (type === "expert") {
       const keep = settings.modes.filter((m) => QUIZ_MODES.includes(m));
       patch.modes = keep.length ? keep : ["capital", "flag"];
+    } else if (type === "borders") {
+      patch.modes = ["border"];
     } else {
       patch.modes = ["build"];
       if (!(BuildGraph.SUPPORTED as readonly string[]).includes(settings.region)) {
@@ -107,6 +110,7 @@ export default function MenuPage() {
     const grp = MODES[modes[0]].group;
     if (grp === "expert") router.push("/quiz", { scroll: false });
     else if (grp === "map") router.push("/map", { scroll: false });
+    else if (grp === "borders") router.push("/borders", { scroll: false });
     else router.push("/build", { scroll: false });
   };
 

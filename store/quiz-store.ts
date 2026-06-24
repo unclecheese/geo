@@ -9,7 +9,7 @@ import type { Country, ModeId, ModeGroup } from "@/lib/types";
 
 // Modes that belong to each screen.
 const MAP_MODES: ModeId[] = ["find", "name"];
-const EXPERT_MODES: ModeId[] = ["capital", "flag", "border"];
+const EXPERT_MODES: ModeId[] = ["capital", "flag"];
 const NON_BUILD_MODES: ModeId[] = [...MAP_MODES, ...EXPERT_MODES];
 
 function screenFor(modes: ModeId[]): "map" | "quiz" {
@@ -38,16 +38,6 @@ export interface CurrentQuestion {
   mode: ModeId;
 }
 
-export interface BorderState {
-  required: Set<string>;
-  candidates: Country[];
-  submitted: {
-    selected: Set<string>;
-    missing: string[];
-    wrong: string[];
-  } | null;
-}
-
 export interface RevealState {
   item: Country;
   correct: boolean;
@@ -68,7 +58,6 @@ interface QuizState {
   session: QuizSession | null;
   current: CurrentQuestion | null;
   answered: boolean;
-  borderState: BorderState | null;
   reveal: RevealState | null;
   choiceResult: ChoiceResult | null;
   finished: boolean;
@@ -79,7 +68,6 @@ interface QuizState {
   start: () => void;
   next: () => void;
   handleTyped: (value: string) => void;
-  submitBorderExpert: (ids: string[]) => void;
   handleMapSelect: (country: Country) => void;
   handleChoice: (chosen: Country) => void;
   grade: (correct: boolean, extra?: { missing?: string[]; wrong?: string[] }) => void;
@@ -110,7 +98,6 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   session: null,
   current: null,
   answered: false,
-  borderState: null,
   reveal: null,
   choiceResult: null,
   finished: false,
@@ -146,7 +133,6 @@ export const useQuizStore = create<QuizState>((set, get) => ({
           if ((m === "find" || m === "name") && c.feature) askable.add(c.id);
           else if (m === "capital" && c.capital && c.capital !== "—") askable.add(c.id);
           else if (m === "flag" && c.cca2) askable.add(c.id);
-          else if (m === "border" && c.neighbours.some((n) => p.includes(n))) askable.add(c.id);
         }
       }
       return askable.size || p.length;
@@ -172,7 +158,6 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       session,
       current: null,
       answered: false,
-      borderState: null,
       reveal: null,
       choiceResult: null,
       elapsedMs: 0,
@@ -232,8 +217,6 @@ export const useQuizStore = create<QuizState>((set, get) => ({
         cand = p.filter((c) => c.capital && c.capital !== "—");
       } else if (m === "flag") {
         cand = p.filter((c) => c.cca2);
-      } else if (m === "border") {
-        cand = p.filter((c) => c.neighbours.some((n) => p.includes(n)));
       }
       if (!cand.length) continue;
       const picked = Logic.selectNextItem(cand, leit, m, { avoidId, exclude });
@@ -252,15 +235,11 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     session.askedIds.add(item.id);
     session.asked += 1;
 
-    let borderState: BorderState | null = null;
-    if (chosenMode === "border") borderState = buildBorderState(item, p);
-
     set({
       current: { item, mode: chosenMode },
       answered: false,
       reveal: null,
       choiceResult: null,
-      borderState,
       qStartTime: now(),
       session: { ...session },
     });
@@ -293,19 +272,6 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     const { item, mode } = state.current;
     const answer = mode === "capital" ? item.capital : item.name;
     get().grade(Logic.matchAnswer(value, answer || ""));
-  },
-
-  submitBorderExpert: (ids: string[]) => {
-    const state = get();
-    if (!state.active || state.answered || !state.current || state.current.mode !== "border") return;
-    const bs = state.borderState;
-    if (!bs) return;
-    const sel = new Set(ids);
-    const missing = [...bs.required].filter((id) => !sel.has(id));
-    const wrong = [...sel].filter((id) => !bs.required.has(id));
-    const correct = missing.length === 0 && wrong.length === 0;
-    set({ borderState: { ...bs, submitted: { selected: sel, missing, wrong } } });
-    get().grade(correct, { missing, wrong });
   },
 
   handleMapSelect: (country: Country) => {
@@ -450,27 +416,8 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       current: null,
       reveal: null,
       answered: false,
-      borderState: null,
       choiceResult: null,
       _timerId: null,
     });
   },
 }));
-
-// Border candidate set (unchanged from Phase 3).
-function buildBorderState(item: Country, p: Country[]): BorderState {
-  const reqObjs = item.neighbours.filter((n) => p.includes(n));
-  const required = new Set(reqObjs.map((n) => n.id));
-  const nonNeighbours = p.filter((c) => c.id !== item.id && !required.has(c.id));
-  const sameR = Logic._shuffle(nonNeighbours.filter((c) => c.region === item.region));
-  const otherR = Logic._shuffle(nonNeighbours.filter((c) => c.region !== item.region));
-  const total = Math.max(8, required.size * 2);
-  const distractors: Country[] = [];
-  while (distractors.length < total - required.size && sameR.length) distractors.push(sameR.pop()!);
-  while (distractors.length < total - required.size && otherR.length) distractors.push(otherR.pop()!);
-  return {
-    required,
-    candidates: Logic._shuffle(reqObjs.concat(distractors)),
-    submitted: null,
-  };
-}

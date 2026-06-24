@@ -4,7 +4,7 @@ import type { Feature } from "geojson";
 export type ModeId = "find" | "name" | "capital" | "flag" | "border" | "build";
 
 /** Modes belong to mutually-exclusive groups that route to different screens. */
-export type ModeGroup = "map" | "expert" | "build";
+export type ModeGroup = "map" | "expert" | "borders" | "build";
 
 export interface Mode {
   id: ModeId;

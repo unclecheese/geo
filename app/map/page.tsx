@@ -32,6 +32,7 @@ export default function MapPage() {
   const start        = useQuizStore((s) => s.start);
   const next         = useQuizStore((s) => s.next);
   const handleChoice = useQuizStore((s) => s.handleChoice);
+  const handleMapSelect = useQuizStore((s) => s.handleMapSelect);
   const quit         = useQuizStore((s) => s.quit);
 
   const settings    = useAtlasStore((s) => s.settings);
@@ -108,7 +109,7 @@ export default function MapPage() {
   return (
     <>
       {/* Map fills the viewport */}
-      <MapViewComponent />
+      <MapViewComponent onSelect={handleMapSelect} />
 
       {/* Persistent map tip */}
       <div className="map-tip" role="note">

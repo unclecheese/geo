@@ -120,7 +120,7 @@ button { font-family: inherit; cursor: pointer; }
   display: grid; grid-template-columns: 1fr; gap: 16px;
 }
 
-.qc-map, .qc-expert, .qc-build { --c1: var(--accent); }
+.qc-map, .qc-expert, .qc-borders, .qc-build { --c1: var(--accent); }
 
 .quiz-card {
   position: relative; overflow: hidden; cursor: pointer; text-align: left; color: var(--ink);
@@ -291,6 +291,15 @@ select:focus { border-color: var(--accent); }
 
 .map-actions { margin-top: 14px; display: flex; gap: 9px; }
 .map-actions .btn { width: auto; flex: 1; }
+
+/* Borders module: per-question progress + give-up link in the HUD body */
+.bd-progress { display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-top: 10px; }
+.bd-count { font-size: 13px; font-weight: 700; color: var(--accent);
+  font-variant-numeric: tabular-nums; }
+.bd-reveal { background: none; border: 0; padding: 0; cursor: pointer;
+  font-size: 12.5px; font-style: italic; color: var(--ink-faint); text-decoration: underline; }
+.bd-reveal:hover { color: var(--ink-dim); }
 
 /* ---------- Feedback reveal card ---------- */
 #reveal {

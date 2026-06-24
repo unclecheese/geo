@@ -9,7 +9,6 @@ import { useAtlasStore } from "@/store/atlas-store";
 import { useQuizStore } from "@/store/quiz-store";
 import { useData } from "@/components/DataProvider";
 import { Autocomplete } from "@/components/Autocomplete";
-import { BorderGrid } from "@/components/BorderGrid";
 import { Reveal } from "@/components/Reveal";
 import { Scorebar } from "@/components/Scorebar";
 import { Results } from "@/components/Results";
@@ -22,14 +21,12 @@ export default function QuizPage() {
   const session = useQuizStore((s) => s.session);
   const current = useQuizStore((s) => s.current);
   const answered = useQuizStore((s) => s.answered);
-  const borderState = useQuizStore((s) => s.borderState);
   const reveal = useQuizStore((s) => s.reveal);
   const finished = useQuizStore((s) => s.finished);
 
   const start = useQuizStore((s) => s.start);
   const next = useQuizStore((s) => s.next);
   const handleTyped = useQuizStore((s) => s.handleTyped);
-  const submitBorderExpert = useQuizStore((s) => s.submitBorderExpert);
   const quit = useQuizStore((s) => s.quit);
 
   const [showStats, setShowStats] = useState(false);
@@ -123,22 +120,6 @@ export default function QuizPage() {
           </>
         )}
 
-        {item && mode === "border" && borderState && (
-          <>
-            <div>
-              <div className="q-prompt">
-                Select every country that borders <span className="em">{item.name}</span>
-              </div>
-              <div className="q-sub">Tap all its neighbours, then submit</div>
-            </div>
-            <BorderGrid
-              key={item.id + ":border"}
-              borderState={borderState}
-              answered={answered}
-              onSubmit={submitBorderExpert}
-            />
-          </>
-        )}
       </div>
 
       <Scorebar />
