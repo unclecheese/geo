@@ -300,6 +300,9 @@ select:focus { border-color: var(--accent); }
 .bd-reveal { background: none; border: 0; padding: 0; cursor: pointer;
   font-size: 12.5px; font-style: italic; color: var(--ink-faint); text-decoration: underline; }
 .bd-reveal:hover { color: var(--ink-dim); }
+/* found / missed neighbour chips in the Borders summary card */
+.rv-meta .bd-ok { color: #34d399; }
+.rv-meta .bd-no { color: #f87171; }
 
 /* ---------- Feedback reveal card ---------- */
 #reveal {

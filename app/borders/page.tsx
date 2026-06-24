@@ -12,7 +12,6 @@ import { useData } from "@/components/DataProvider";
 import { MapViewComponent } from "@/components/MapView";
 import { Autocomplete } from "@/components/Autocomplete";
 import { Scorebar } from "@/components/Scorebar";
-import { Reveal } from "@/components/Reveal";
 import { Results } from "@/components/Results";
 import { StatsDashboard } from "@/components/StatsDashboard";
 import { Audio2 } from "@/lib/fx";
@@ -163,7 +162,37 @@ export default function BordersPage() {
       </div>
 
       <Scorebar />
-      <Reveal reveal={answered ? reveal : null} onNext={next} />
+
+      {/* Borders summary: which neighbours you found vs missed (not a pass/fail
+          card about the target country itself). */}
+      {answered && target && (
+        <div id="reveal" className={"show " + (reveal?.correct ? "good" : "bad")}>
+          <div className="rv-head">
+            <img className="rv-flag" src={target.flagSvg} alt="" />
+            <div>
+              <div className="rv-name">{target.name}</div>
+              <div className="rv-cap">
+                {foundIds.size} of {required.length} neighbours found
+              </div>
+            </div>
+            <div className={"rv-verdict " + (reveal?.correct ? "good" : "bad")}>
+              {reveal?.correct ? "✓ All found" : `${foundIds.size} / ${required.length}`}
+            </div>
+          </div>
+          <div className="rv-meta">
+            {required.map((n) => (
+              <span key={n.id} className={foundIds.has(n.id) ? "bd-ok" : "bd-no"}>
+                {foundIds.has(n.id) ? "✓ " : "✗ "}
+                {n.name}
+              </span>
+            ))}
+          </div>
+          <button className="btn rv-next" onClick={next}>
+            Next ▸
+          </button>
+        </div>
+      )}
+
       <Results
         session={finished ? session : null}
         onAgain={start}

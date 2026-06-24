@@ -108,7 +108,7 @@ export const MapView = {
 
     // zoom behaviour
     this.zoom = zoom<SVGSVGElement, unknown>()
-      .scaleExtent([1, 14])
+      .scaleExtent([1, 200]) // deep zoom so Borders can frame even small countries large
       .translateExtent([
         [0, 0],
         [this.width, this.height],
@@ -348,9 +348,10 @@ export const MapView = {
   },
 
   // Borders mode: zoom so the target's bounding box spans a CONSTANT fraction of
-  // the viewport, regardless of the country's real size — France and Cambodia end
-  // up the same apparent size. Clamped only by the map's zoom limits (no tiny-cap).
-  frameConstant(country: Country, frac = 0.42) {
+  // the viewport, regardless of the country's real size — a "picture frame" where
+  // the subject dominates (France and Cambodia end up the same apparent size).
+  // Clamped only by the map's zoom limits, so even tiny countries fill the frame.
+  frameConstant(country: Country, frac = 0.62) {
     if (!this.svg || !this.zoom || !this.path || !this.projection) return;
     let bounds: [[number, number], [number, number]];
     if (country.feature) {
@@ -370,7 +371,7 @@ export const MapView = {
     const cx = (x0 + x1) / 2,
       cy = (y0 + y1) / 2;
     let k = frac / Math.max(dx / this.width, dy / this.height);
-    k = Math.max(1, Math.min(14, k));
+    k = Math.max(1, Math.min(200, k));
     const t = zoomIdentity
       .translate(this.width / 2, this.height / 2)
       .scale(k)
