@@ -17,7 +17,21 @@ import { MODES } from "@/lib/modes";
 import { BOX_COLORS } from "@/lib/constants";
 import { useAtlasStore } from "@/store/atlas-store";
 import type { Country } from "@/lib/types";
-import type { Feature } from "geojson";
+import type { Feature, Polygon } from "geojson";
+
+// Projected area (px²) of a feature's largest polygon — the biggest single
+// landmass on screen. Used to decide whether a country needs a marker dot.
+function largestPolyPxArea(path: ReturnType<typeof geoPath>, feature: Feature): number {
+  const g = feature.geometry;
+  const rings =
+    g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+  let max = 0;
+  for (const coordinates of rings) {
+    const a = path.area({ type: "Polygon", coordinates } as Polygon as never);
+    if (a > max) max = a;
+  }
+  return max;
+}
 
 type SVGSelection = Selection<SVGSVGElement, unknown, null, undefined>;
 type GSelection = Selection<SVGGElement, unknown, null, undefined>;
@@ -39,6 +53,11 @@ export const MapView = {
   _regionColor: null as null,
   _inited: false,
   tinyIds: new Set<string>(),
+  // Click-resolution sites: each locatable country's projected centroid (in the
+  // unzoomed g coordinate space). A missed click resolves to the nearest of
+  // these within HIT_CUTOFF on-screen px, giving every country a water buffer.
+  _sites: [] as { x: number; y: number; country: Country }[],
+  _downPt: null as [number, number] | null,
   _pendingSelect: null as ReturnType<typeof setTimeout> | null,
   _mouseupHandler: null as (() => void) | null,
 
@@ -54,6 +73,11 @@ export const MapView = {
 
   // SELECT_DELAY: debounces single-click so a dblclick zoom never registers as answer.
   SELECT_DELAY: 240,
+
+  // HIT_CUTOFF: max on-screen distance (px) from a click to a country's centroid
+  // for the click to count as selecting it. Constant in screen space, so zooming
+  // in shrinks the geographic catch area and lets you separate close neighbours.
+  HIT_CUTOFF: 44,
 
   init(svgEl: SVGSVGElement, wrapEl: HTMLElement) {
     if (this._inited) this.destroy();
@@ -135,7 +159,21 @@ export const MapView = {
       this.zoomToPoint(mx, my, 4);
     });
 
-    this.svg.on("mousedown", () => this.svg!.node()!.classList.add("dragging"));
+    this.svg.on("mousedown", (ev: MouseEvent) => {
+      this.svg!.node()!.classList.add("dragging");
+      this._downPt = pointer(ev, this.svg!.node());
+    });
+
+    // Water-buffer selection: a click that misses every country polygon (the
+    // polygons stopPropagation their own clicks, so this only fires on "ocean")
+    // resolves to the nearest country within HIT_CUTOFF. Skipped after a drag,
+    // which was a pan — not a pick.
+    this.svg.on("click", (ev: MouseEvent) => {
+      const [mx, my] = pointer(ev, this.svg!.node());
+      if (this._downPt && Math.hypot(mx - this._downPt[0], my - this._downPt[1]) > 6) return;
+      const c = this._countryAt(mx, my);
+      if (c) this._scheduleSelect(c);
+    });
 
     // Store bound handler reference so we can remove it on destroy.
     this._mouseupHandler = () => this.svg?.node()?.classList.remove("dragging");
@@ -163,39 +201,37 @@ export const MapView = {
         if (c) self._scheduleSelect(c);
       });
 
-    // markers for tiny sovereign countries and microstates without polygon geometry
+    // Build a click-resolution site (projected largest-polygon centroid) for
+    // every locatable country, and a visible marker dot for those whose biggest
+    // landmass is too small to see. Clicking is handled by nearest-site lookup
+    // (see _countryAt), so the dots need no hit target of their own — which also
+    // ends the old bug where fixed-radius hit discs overlapped and stole clicks.
+    const proj = this.projection;
+    this._sites = [];
     const markerData: Country[] = [];
     for (const c of DataLayer.countries) {
-      if (!c.feature) {
-        if (c.centroid) markerData.push(c);
-        continue;
-      }
-      const b = this.path.bounds(c.feature);
-      const area = Math.max(0, b[1][0] - b[0][0]) * Math.max(0, b[1][1] - b[0][1]);
-      if (Logic.isTiny(area)) {
+      if (!c.centroid) continue;
+      const p = proj(c.centroid);
+      if (!p || !isFinite(p[0]) || !isFinite(p[1])) continue;
+      this._sites.push({ x: p[0], y: p[1], country: c });
+      if (!c.feature || Logic.isTiny(largestPolyPxArea(this.path, c.feature))) {
         this.tinyIds.add(c.id);
         markerData.push(c);
       }
     }
 
-    const proj = this.projection;
     this.gMarkers
       .selectAll<SVGGElement, Country>("g.mk")
       .data(markerData, (d) => d.id)
       .join((enter) => {
-        const grp = enter.append("g").attr("class", "mk").attr("transform", (d) => {
-          const p = d.centroid ? proj(d.centroid) : null;
-          return p ? `translate(${p[0]},${p[1]})` : "translate(-99,-99)";
-        });
-        grp.append("circle").attr("class", "marker").attr("r", 2.4);
-        grp
-          .append("circle")
-          .attr("class", "marker-hit")
-          .attr("r", 9)
-          .on("click", (ev: MouseEvent, d: Country) => {
-            ev.stopPropagation();
-            self._scheduleSelect(d);
+        const grp = enter
+          .append("g")
+          .attr("class", "mk")
+          .attr("transform", (d) => {
+            const p = d.centroid ? proj(d.centroid) : null;
+            return p ? `translate(${p[0]},${p[1]})` : "translate(-99,-99)";
           });
+        grp.append("circle").attr("class", "marker").attr("r", 2.4);
         return grp;
       });
 
@@ -230,12 +266,10 @@ export const MapView = {
   // Drop a bouncing arrow that points down at a country — used to make the
   // highlighted target findable when it's a tiny country (even zoomed in).
   markArrow(country: Country) {
-    if (!this.gArrow || !this.path || !this.projection || !this.svg) return;
-    const p = country.feature
-      ? (this.path.centroid(country.feature) as [number, number])
-      : country.centroid
-      ? (this.projection(country.centroid) as [number, number])
-      : null;
+    if (!this.gArrow || !this.projection || !this.svg) return;
+    // Point at the largest-polygon centroid (same anchor as the marker dot), so
+    // the arrow lands on real land for archipelagos rather than mid-ocean.
+    const p = country.centroid ? (this.projection(country.centroid) as [number, number]) : null;
     if (!p || !isFinite(p[0]) || !isFinite(p[1])) return;
     this._arrowPt = p;
     const k = zoomTransform(this.svg.node()!).k;
@@ -389,6 +423,17 @@ export const MapView = {
     if (opts.activeId) this.paint(opts.activeId, "sel");
   },
 
+  // Nearest country to an on-screen point within HIT_CUTOFF px, or null. Sites
+  // are stored in unzoomed g-space, so apply the current zoom transform before
+  // measuring — that keeps the catch radius constant on screen at any zoom.
+  _countryAt(mx: number, my: number): Country | null {
+    if (!this.svg || !this._sites.length) return null;
+    const t = zoomTransform(this.svg.node()!);
+    const screen = this._sites.map((s) => ({ x: t.applyX(s.x), y: t.applyY(s.y) }));
+    const i = Logic.nearestWithin(screen, mx, my, this.HIT_CUTOFF);
+    return i >= 0 ? this._sites[i].country : null;
+  },
+
   _scheduleSelect(country: Country) {
     this._cancelPendingSelect();
     this._pendingSelect = setTimeout(() => {
@@ -424,6 +469,8 @@ export const MapView = {
     this.zoom = null;
     this.onSelect = null;
     this.tinyIds = new Set();
+    this._sites = [];
+    this._downPt = null;
     this._inited = false;
   },
 };

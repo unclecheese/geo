@@ -117,3 +117,36 @@ describe("Logic.fmtDuration", () => {
     expect(Logic.fmtDuration(3_725_000)).toBe("1:02:05");
   });
 });
+
+describe("Logic.isTiny", () => {
+  it("flags a country whose largest polygon is below the threshold", () => {
+    expect(Logic.isTiny(0.9)).toBe(true); // Micronesia's largest island
+    expect(Logic.isTiny(18.4)).toBe(true); // Fiji's largest island — scattered
+    expect(Logic.isTiny(28.1)).toBe(false); // Kuwait — a visible solid blob
+  });
+});
+
+describe("Logic.nearestWithin", () => {
+  const sites = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 100 },
+  ];
+
+  it("returns the index of the nearest site inside the cutoff", () => {
+    expect(Logic.nearestWithin(sites, 5, 5, 44)).toBe(0);
+    expect(Logic.nearestWithin(sites, 90, 10, 44)).toBe(1);
+  });
+
+  it("returns -1 when the closest site is beyond the cutoff", () => {
+    expect(Logic.nearestWithin(sites, 50, 50, 44)).toBe(-1); // ~70px from each
+    expect(Logic.nearestWithin([], 0, 0, 44)).toBe(-1);
+  });
+
+  it("partitions space so adjacent sites never both claim a point (Voronoi)", () => {
+    // A point just left of the midline between site 0 and site 1 goes to 0;
+    // just right goes to 1 — one owner per point, never both.
+    expect(Logic.nearestWithin(sites, 49, 0, 999)).toBe(0);
+    expect(Logic.nearestWithin(sites, 51, 0, 999)).toBe(1);
+  });
+});

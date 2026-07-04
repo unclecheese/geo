@@ -441,9 +441,8 @@ svg.spark { width: 100%; height: 70px; display: block; }
 .country:hover { stroke: var(--accent); stroke-width: .9px; }
 .country.selectable-hover:hover { filter: drop-shadow(0 0 6px rgba(176,118,43,.85)); }
 
-/* tiny-country markers */
+/* tiny-country markers (visual aid only; clicks resolve to nearest country) */
 .marker { fill: var(--accent); stroke: var(--cream); stroke-width: .5px; pointer-events: none; }
-.marker-hit { fill: transparent; cursor: pointer; }
 
 /* highlight classes (on the dark map — kept vivid for legibility) */
 .hl-good   { fill: #34d399 !important; stroke: #fff !important; stroke-opacity: .9 !important; }

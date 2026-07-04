@@ -1,6 +1,6 @@
-import { geoCentroid } from "d3";
+import { geoArea, geoCentroid } from "d3";
 import { feature } from "topojson-client";
-import type { Feature } from "geojson";
+import type { Feature, Polygon, Position } from "geojson";
 import { DATA_KEY, REST_URL, TOPO_URL } from "./constants";
 import { EXTRA_SOVEREIGN } from "./modes";
 import type { Country } from "./types";
@@ -36,6 +36,33 @@ interface CacheBlob {
 }
 
 const hasStorage = () => typeof window !== "undefined" && !!window.localStorage;
+
+/**
+ * Geographic centroid ([lng, lat]) of a feature's largest polygon. For a plain
+ * Polygon this is just its centroid; for a MultiPolygon it picks the biggest
+ * ring by spherical area, keeping the anchor on the country's main landmass
+ * rather than the whole-feature centroid, which can fall in open ocean.
+ */
+export function largestPolygonCentroid(feature: Feature): [number, number] {
+  const g = feature.geometry;
+  if (g.type === "MultiPolygon") {
+    let best: Position[][] | null = null;
+    let bestArea = -1;
+    for (const coords of g.coordinates) {
+      const poly: Polygon = { type: "Polygon", coordinates: coords };
+      const a = geoArea(poly as never);
+      if (a > bestArea) {
+        bestArea = a;
+        best = coords;
+      }
+    }
+    if (best) {
+      const poly: Polygon = { type: "Polygon", coordinates: best };
+      return geoCentroid(poly as never) as [number, number];
+    }
+  }
+  return geoCentroid(feature) as [number, number];
+}
 
 /**
  * Fetch + join TopoJSON geometry with mledoze country metadata, cache it in
@@ -86,9 +113,20 @@ export const DataLayer = {
       features: Feature[];
     };
     this.features = fc.features;
+    // Index features by padded ccn3, resolving id collisions. The world-atlas
+    // 50m file has several: id "036" is BOTH Australia and the Ashmore & Cartier
+    // reef sliver, and five features (Somaliland, Kosovo, N. Cyprus, Indian
+    // Ocean Ter., Siachen Glacier) carry no id at all. A naive last-write-wins
+    // Map would hand Australia the sliver as its polygon (bbox ≈ 0), so skip the
+    // id-less features and keep the geographically largest feature per id.
     this.featureById = new Map();
     for (const f of this.features) {
-      this.featureById.set(this.pad3(f.id as string | number), f);
+      if (f.id == null) continue;
+      const key = this.pad3(f.id as string | number);
+      const prev = this.featureById.get(key);
+      if (!prev || geoArea(f as never) > geoArea(prev as never)) {
+        this.featureById.set(key, f);
+      }
     }
     // Build sovereign country list.
     const keep: Country[] = [];
@@ -129,11 +167,14 @@ export const DataLayer = {
       if (ccn3) this.byCcn3.set(ccn3, country);
       if (m.cca3) this.byCca3.set(m.cca3, country);
     }
-    // Geographic centroids (fallback to latlng) for framing/markers.
+    // Geographic centroids (fallback to latlng) for framing/markers. Anchored on
+    // the largest polygon so an archipelago's marker/arrow lands on real land —
+    // a multipolygon's overall centroid can sit in open water (Kiribati straddles
+    // the dateline; its geoCentroid is mid-Pacific).
     for (const c of keep) {
       if (c.feature) {
         try {
-          c.centroid = geoCentroid(c.feature) as [number, number];
+          c.centroid = largestPolygonCentroid(c.feature);
         } catch {
           c.centroid = null;
         }

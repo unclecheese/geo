@@ -99,9 +99,30 @@ export const Logic = {
     });
   },
 
-  // Tiny-country threshold from a projected pixel area (bbox area in px²).
-  isTiny(pxArea: number, threshold = 60): boolean {
-    return pxArea < threshold;
+  // Tiny-country threshold from the projected area of a country's LARGEST
+  // polygon (px²). Below this there's no visible landmass to aim at, so the map
+  // draws a marker dot instead. Judged on the biggest polygon rather than total
+  // land so scattered archipelagos (Fiji, Solomon Is.) — lots of sub-pixel
+  // islands, no single visible blob — count as tiny too.
+  isTiny(largestPolyPxArea: number, threshold = 20): boolean {
+    return largestPolyPxArea < threshold;
+  },
+
+  // Index of the site nearest to (x, y) within `maxDist`, or -1 if none is in
+  // range. Returning the single closest site makes the catch zones a Voronoi
+  // partition: they tile the plane and never overlap — the "water buffer around
+  // each country, no two zones overlapping" that map clicks resolve against.
+  nearestWithin(sites: { x: number; y: number }[], x: number, y: number, maxDist: number): number {
+    let best = -1;
+    let bestD = maxDist;
+    for (let i = 0; i < sites.length; i++) {
+      const d = Math.hypot(sites[i].x - x, sites[i].y - y);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    return best;
   },
 
   // A country can be a target in map modes only if it has a polygon to
