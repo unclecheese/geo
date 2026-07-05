@@ -231,7 +231,10 @@ function BlankInput({
   onChange: (v: string) => void;
 }) {
   const [focused, setFocused] = useState(false);
-  const items = focused ? Logic.suggest(value, candidates, 6) : [];
+  // Drop a suggestion identical to what's typed: once a blank holds a complete
+  // country name the dropdown closes, so it never overlays (and swallows a click
+  // on) the Submit button below the last blank.
+  const items = focused ? Logic.suggest(value, candidates, 6).filter((s) => s !== value) : [];
   return (
     <div className="ac" style={{ flex: 1 }}>
       <input
