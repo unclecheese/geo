@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { usePinchGuard } from "@/lib/use-pinch-guard";
 import { MODES } from "@/lib/modes";
 import { Logic } from "@/lib/logic";
 import { DataLayer } from "@/lib/data-layer";
 import { useAtlasStore } from "@/store/atlas-store";
 import { useBordersStore } from "@/store/borders-store";
 import { useData } from "@/components/DataProvider";
-import { MapViewComponent } from "@/components/MapView";
-import { Autocomplete } from "@/components/Autocomplete";
+import { FrameView } from "@/components/FrameView";
 import { Scorebar } from "@/components/Scorebar";
 import { Results } from "@/components/Results";
 import { StatsDashboard } from "@/components/StatsDashboard";
@@ -19,29 +17,29 @@ import { Audio2 } from "@/lib/fx";
 export default function BordersPage() {
   const router = useRouter();
   const { ready } = useData();
-  usePinchGuard();
 
   const session = useBordersStore((s) => s.session);
   const target = useBordersStore((s) => s.target);
-  const required = useBordersStore((s) => s.required);
-  const foundIds = useBordersStore((s) => s.foundIds);
-  const activeId = useBordersStore((s) => s.activeId);
+  const shown = useBordersStore((s) => s.shown);
+  const candidates = useBordersStore((s) => s.candidates);
+  const easy = useBordersStore((s) => s.easy);
+  const assign = useBordersStore((s) => s.assign);
+  const typed = useBordersStore((s) => s.typed);
   const answered = useBordersStore((s) => s.answered);
   const reveal = useBordersStore((s) => s.reveal);
   const finished = useBordersStore((s) => s.finished);
 
   const start = useBordersStore((s) => s.start);
   const next = useBordersStore((s) => s.next);
-  const submitName = useBordersStore((s) => s.submitName);
-  const revealAll = useBordersStore((s) => s.revealAll);
-  const handleMapClick = useBordersStore((s) => s.handleMapClick);
+  const setAssign = useBordersStore((s) => s.setAssign);
+  const setTyped = useBordersStore((s) => s.setTyped);
+  const submit = useBordersStore((s) => s.submit);
   const quit = useBordersStore((s) => s.quit);
 
   const settings = useAtlasStore((s) => s.settings);
   const setSettings = useAtlasStore((s) => s.setSettings);
 
   const [showStats, setShowStats] = useState(false);
-  const [hudHidden, setHudHidden] = useState(false);
 
   // Start on mount once data is ready; redirect out if the saved mode isn't Borders.
   useEffect(() => {
@@ -57,12 +55,7 @@ export default function BordersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
-  // Hide the HUD while the reveal card is open.
-  useEffect(() => {
-    setHudHidden(answered && !!reveal);
-  }, [answered, reveal]);
-
-  // Enter advances to the next country once the reveal is showing.
+  // Enter advances once the reveal card is showing (but not while typing a blank).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.matches?.("input")) return;
@@ -89,17 +82,14 @@ export default function BordersPage() {
   };
 
   const progressText = session ? `${session.asked} / ${session.total}` : "";
-  // Naming candidates: any country, since neighbours can sit outside the filter.
+  const nums = shown.map((_, i) => i + 1); // badge numbers 1..n
+
+  // Naming candidates for difficult mode: any country (neighbours may sit outside
+  // the active region filter).
   const allNames = [...new Set(DataLayer.countries.map((c) => c.name))];
 
   return (
-    <>
-      <MapViewComponent onSelect={handleMapClick} />
-
-      <div className="map-tip" role="note">
-        <span aria-hidden>🔍</span> Double-click anywhere to zoom and centre on that area.
-      </div>
-
+    <section className="screen-quiz">
       <div className="screen-top">
         <div className="st-left">
           <button className="icon-btn" title="Back to menu" onClick={backToMenu}>
@@ -121,69 +111,94 @@ export default function BordersPage() {
         </div>
       </div>
 
-      <div id="hud" className={hudHidden ? "hidden" : ""}>
+      <div className="quiz-stage">
         <div className="q-top">
           <span className="q-mode">Borders</span>
           <span className="q-progress">{progressText}</span>
         </div>
 
-        <div id="q-body">
-          {target && (
-            <>
-              <div className="q-prompt">
-                Name all <span className="em">{required.length}</span>{" "}
-                {required.length === 1 ? "country" : "countries"} bordering{" "}
-                <span className="em">{target.name}</span>
-              </div>
-              <div className="q-sub">
-                {activeId
-                  ? "What country is this?"
-                  : "Tap each bordering country to name it — open water isn't clickable"}
-              </div>
-              <div className="bd-progress">
-                <span className="bd-count">
-                  {foundIds.size} / {required.length} found
-                </span>
-                {!activeId && (
-                  <button className="bd-reveal" onClick={revealAll}>
-                    Reveal answers
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+        {target && (
+          <>
+            <div className="q-prompt" style={{ textAlign: "center" }}>
+              Name the countries bordering <span className="em">{target.name}</span>
+            </div>
+            <div className="q-sub" style={{ textAlign: "center" }}>
+              {easy
+                ? "Tap each name, then its number in the picture. Some don't border it — leave those unset."
+                : "Type the country at each number"}
+            </div>
 
-        <div id="q-controls">
-          {target && activeId && (
-            <Autocomplete key={activeId} candidates={allNames} onSubmit={submitName} />
-          )}
-        </div>
+            <FrameView key={target.id} target={target} shown={shown} />
+
+            {/* Easy: match candidate names to badge numbers. */}
+            {easy && !answered && (
+              <div className="bd-match">
+                {candidates.map((c) => (
+                  <div className="bd-row" key={c.id}>
+                    <span className="bd-cand">{c.name}</span>
+                    <div className="bd-nums">
+                      {nums.map((num) => (
+                        <button
+                          key={num}
+                          className={assign[c.id] === num ? "on" : ""}
+                          onClick={() => setAssign(c.id, assign[c.id] === num ? null : num)}
+                        >
+                          {num}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <button className="btn bd-submit" onClick={submit}>
+                  Submit ▸
+                </button>
+              </div>
+            )}
+
+            {/* Difficult: one controlled input per badge number. */}
+            {!easy && !answered && (
+              <div className="bd-blanks">
+                {nums.map((num) => (
+                  <div className="bd-blank" key={num}>
+                    <span className="bd-num">{num}</span>
+                    <BlankInput
+                      value={typed[num] || ""}
+                      candidates={allNames}
+                      onChange={(v) => setTyped(num, v)}
+                    />
+                  </div>
+                ))}
+                <button className="btn bd-submit" onClick={submit}>
+                  Submit ▸
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <Scorebar />
 
-      {/* Borders summary: which neighbours you found vs missed (not a pass/fail
-          card about the target country itself). */}
-      {answered && target && (
-        <div id="reveal" className={"show " + (reveal?.correct ? "good" : "bad")}>
+      {/* Reveal: per-neighbour ✓/✗ with the correct names. */}
+      {answered && reveal && (
+        <div id="reveal" className={"show " + (reveal.correct ? "good" : "bad")}>
           <div className="rv-head">
-            <img className="rv-flag" src={target.flagSvg} alt="" />
+            <img className="rv-flag" src={reveal.target.flagSvg} alt="" />
             <div>
-              <div className="rv-name">{target.name}</div>
+              <div className="rv-name">{reveal.target.name}</div>
               <div className="rv-cap">
-                {foundIds.size} of {required.length} neighbours found
+                {reveal.results.filter((r) => r.ok).length} of {reveal.results.length} correct
               </div>
             </div>
-            <div className={"rv-verdict " + (reveal?.correct ? "good" : "bad")}>
-              {reveal?.correct ? "✓ All found" : `${foundIds.size} / ${required.length}`}
+            <div className={"rv-verdict " + (reveal.correct ? "good" : "bad")}>
+              {reveal.correct ? "✓ All correct" : `${reveal.results.filter((r) => r.ok).length} / ${reveal.results.length}`}
             </div>
           </div>
           <div className="rv-meta">
-            {required.map((n) => (
-              <span key={n.id} className={foundIds.has(n.id) ? "bd-ok" : "bd-no"}>
-                {foundIds.has(n.id) ? "✓ " : "✗ "}
-                {n.name}
+            {reveal.results.map((r) => (
+              <span key={r.country.id} className={r.ok ? "bd-ok" : "bd-no"}>
+                {r.ok ? "✓ " : "✗ "}
+                {r.num}. {r.country.name}
               </span>
             ))}
           </div>
@@ -200,6 +215,51 @@ export default function BordersPage() {
         onMenu={backToMenu}
       />
       <StatsDashboard open={showStats} onClose={() => setShowStats(false)} />
-    </>
+    </section>
+  );
+}
+
+// A controlled name input with a lightweight suggestion dropdown, mirrored straight
+// into store state (no per-blank Submit/Skip — one Submit grades the whole picture).
+function BlankInput({
+  value,
+  candidates,
+  onChange,
+}: {
+  value: string;
+  candidates: string[];
+  onChange: (v: string) => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const items = focused ? Logic.suggest(value, candidates, 6) : [];
+  return (
+    <div className="ac" style={{ flex: 1 }}>
+      <input
+        className="ac-input"
+        type="text"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="Type a country…"
+        value={value}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setTimeout(() => setFocused(false), 120)}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <div className="ac-list" hidden={!items.length}>
+        {items.map((c) => (
+          <div
+            key={c}
+            className="ac-opt"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onChange(c);
+              setFocused(false);
+            }}
+          >
+            {c}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
