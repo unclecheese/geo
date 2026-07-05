@@ -19,18 +19,28 @@ import { useAtlasStore } from "@/store/atlas-store";
 import type { Country } from "@/lib/types";
 import type { Feature, Polygon } from "geojson";
 
-// Projected area (px²) of a feature's largest polygon — the biggest single
-// landmass on screen. Used to decide whether a country needs a marker dot.
-function largestPolyPxArea(path: ReturnType<typeof geoPath>, feature: Feature): number {
+// The projected area (px²) and bounding box of a feature's largest polygon —
+// its biggest single landmass on screen. Used both to decide whether a country
+// is a tiny island and to frame the outline box on that landmass (not the whole
+// scattered multipolygon, whose centre can be open ocean).
+function largestPolygon(
+  path: ReturnType<typeof geoPath>,
+  feature: Feature
+): { area: number; bounds: [[number, number], [number, number]] } | null {
   const g = feature.geometry;
   const rings =
     g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
-  let max = 0;
+  let best: Polygon | null = null;
+  let bestArea = -1;
   for (const coordinates of rings) {
-    const a = path.area({ type: "Polygon", coordinates } as Polygon as never);
-    if (a > max) max = a;
+    const poly: Polygon = { type: "Polygon", coordinates };
+    const a = path.area(poly as never);
+    if (a > bestArea) {
+      bestArea = a;
+      best = poly;
+    }
   }
-  return max;
+  return best ? { area: bestArea, bounds: path.bounds(best as never) as [[number, number], [number, number]] } : null;
 }
 
 type SVGSelection = Selection<SVGSVGElement, unknown, null, undefined>;
@@ -84,12 +94,15 @@ export const MapView = {
   // in shrinks the geographic catch area and lets you separate close neighbours.
   HIT_CUTOFF: 44,
 
-  // Tiny-country outline boxes, sized in unzoomed g units. BOX_PAD is added
-  // around the country's own bounding box; BOX_MAX_HALF caps how large an
-  // isolated island's box can grow. Both are shrunk further where needed so no
-  // two boxes overlap (see Logic.boxHalfSizesNoOverlap).
-  BOX_PAD: 6,
-  BOX_MAX_HALF: 20,
+  // Island outline boxes, sized in unzoomed g units (scaled by the map's linear
+  // size at render). BOX_PAD is added around the island's own bounding box;
+  // BOX_MAX_HALF caps an isolated box; BOX_MIN_HALF floors it so an island that
+  // hugs a mainland (Singapore) still gets a clickable box. Boxes are shrunk
+  // where needed so none overlap each other (Logic.boxHalfSizesNoOverlap) or
+  // spill onto a neighbouring country's coastline.
+  BOX_PAD: 8,
+  BOX_MAX_HALF: 16,
+  BOX_MIN_HALF: 4,
 
   init(svgEl: SVGSVGElement, wrapEl: HTMLElement) {
     if (this._inited) this.destroy();
@@ -215,50 +228,66 @@ export const MapView = {
       });
 
     // Build a click-resolution site (projected largest-polygon centroid) for
-    // every locatable country, and collect the tiny ones — those whose biggest
-    // landmass is too small to see or reliably click.
+    // every locatable country, and collect the tiny ISLANDS — small countries
+    // with no land border. Landlocked/coastal microstates (Vatican, Qatar, the
+    // Gambia) are excluded: they're clickable on their own land or their bigger
+    // neighbour, and don't want a box floating in someone else's territory.
     const proj = this.projection;
-    // Sphere area normalises the tiny-country test so it's viewport-independent,
-    // and its square root scales the box padding/cap with the map's linear size
-    // so boxes stay proportionally the same on a phone and a wide monitor.
+    // Sphere area normalises the tiny test so it's viewport-independent, and its
+    // square root scales the box padding/caps with the map's linear size so boxes
+    // stay proportionally the same on a phone and a wide monitor.
     const sphereArea = this.path.area({ type: "Sphere" } as never) || 1;
     const boxScale = Math.sqrt(sphereArea / 859371); // 859371 = sphere px² at the 1440×810 reference
     const boxPad = this.BOX_PAD * boxScale;
     const boxMaxHalf = this.BOX_MAX_HALF * boxScale;
+    const boxMinHalf = this.BOX_MIN_HALF * boxScale;
     this._sites = [];
-    const tiny: { c: Country; cx: number; cy: number; half: number }[] = [];
+    const islands: { c: Country; cx: number; cy: number; desired: number }[] = [];
     for (const c of DataLayer.countries) {
       if (!c.centroid) continue;
       const p = proj(c.centroid);
       if (!p || !isFinite(p[0]) || !isFinite(p[1])) continue;
       this._sites.push({ x: p[0], y: p[1], country: c });
-      if (c.feature && !Logic.isTiny(largestPolyPxArea(this.path, c.feature) / sphereArea)) continue;
+      // Tiny = largest landmass is a minute fraction of the globe (or no polygon
+      // at all, e.g. Tuvalu). tinyIds drives close-framing in name mode and stays
+      // inclusive of microstates; only tiny ISLANDS (no land border) get a box.
+      const lp = c.feature ? largestPolygon(this.path, c.feature) : null;
+      if (lp && !Logic.isTiny(lp.area / sphereArea)) continue;
       this.tinyIds.add(c.id);
-      // Desired box: centre on the country's projected bounds (or its centroid
-      // when it has no polygon), sized to enclose it plus BOX_PAD, capped.
+      if ((c._borders?.length ?? 0) !== 0) continue;
+      // Frame and centre the box on the largest island (not the whole scattered
+      // multipolygon), so the box sits on real land and reveals it when zoomed.
       let cx = p[0],
         cy = p[1],
         extent = 0;
-      if (c.feature) {
-        const b = this.path.bounds(c.feature);
-        cx = (b[0][0] + b[1][0]) / 2;
-        cy = (b[0][1] + b[1][1]) / 2;
-        extent = Math.max(b[1][0] - b[0][0], b[1][1] - b[0][1]) / 2;
+      if (lp) {
+        const [[x0, y0], [x1, y1]] = lp.bounds;
+        cx = (x0 + x1) / 2;
+        cy = (y0 + y1) / 2;
+        extent = Math.max(x1 - x0, y1 - y0) / 2;
       }
-      const half = Math.min(extent + boxPad, boxMaxHalf);
-      tiny.push({ c, cx, cy, half });
+      islands.push({ c, cx, cy, desired: Math.min(extent + boxPad, boxMaxHalf) });
     }
 
-    // Shrink boxes so none overlap, then build their world-space extents.
-    const centers = tiny.map((t) => ({ x: t.cx, y: t.cy }));
-    const halves = Logic.boxHalfSizesNoOverlap(centers, tiny.map((t) => t.half));
-    this._boxes = tiny.map((t, i) => ({
-      x0: t.cx - halves[i],
-      y0: t.cy - halves[i],
-      x1: t.cx + halves[i],
-      y1: t.cy + halves[i],
-      country: t.c,
-    }));
+    // Two clamps, each only ever shrinking a box: (1) so no two island boxes
+    // overlap, and (2) so a box doesn't spill onto a neighbouring country's
+    // coastline (Chebyshev distance, since the box is a square). An island that
+    // hugs a mainland keeps a floor so it stays clickable, at the cost of a small
+    // unavoidable overlap.
+    const centers = islands.map((t) => ({ x: t.cx, y: t.cy }));
+    const halves = Logic.boxHalfSizesNoOverlap(centers, islands.map((t) => t.desired));
+    const coast = this._coastVertices(proj);
+    this._boxes = islands.map((t, i) => {
+      let half = halves[i];
+      let nearest = Infinity;
+      for (const v of coast) {
+        if (v.id === t.c.id) continue;
+        const cheb = Math.max(Math.abs(v.x - t.cx), Math.abs(v.y - t.cy));
+        if (cheb < nearest) nearest = cheb;
+      }
+      half = Math.min(half, Math.max(nearest, boxMinHalf));
+      return { x0: t.cx - half, y0: t.cy - half, x1: t.cx + half, y1: t.cy + half, country: t.c };
+    });
 
     this.gMarkers
       .selectAll<SVGRectElement, (typeof this._boxes)[number]>("rect.mk-box")
@@ -279,6 +308,28 @@ export const MapView = {
     // Country names intentionally never rendered — keep labels layer empty.
     this.gLabels.selectAll("text.label").remove();
     this.gLabels.attr("opacity", 0);
+  },
+
+  // Projected exterior-ring vertices of every country with geometry, tagged with
+  // the owning country id. Used to clamp island boxes off foreign coastlines.
+  // Subsampled (every 2nd vertex) — coastlines are dense at 50m, so this stays
+  // accurate while keeping the one-off cost low.
+  _coastVertices(proj: ReturnType<typeof geoEqualEarth>): { x: number; y: number; id: string }[] {
+    const pts: { x: number; y: number; id: string }[] = [];
+    for (const c of DataLayer.countries) {
+      if (!c.feature) continue;
+      const g = c.feature.geometry;
+      const polys =
+        g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+      for (const poly of polys) {
+        const ring = poly[0]; // exterior ring
+        for (let i = 0; i < ring.length; i += 2) {
+          const p = proj(ring[i] as [number, number]);
+          if (p && isFinite(p[0]) && isFinite(p[1])) pts.push({ x: p[0], y: p[1], id: c.id });
+        }
+      }
+    }
+    return pts;
   },
 
   _fillFor(feature: Feature): string {
