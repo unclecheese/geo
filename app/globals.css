@@ -210,6 +210,12 @@ button { font-family: inherit; cursor: pointer; }
 .bsel.missed { border-color: var(--warn); border-style: dashed; }
 .bsel:disabled { cursor: default; }
 
+/* multi-select region/subregion grid: tighter chips that wrap, plus a full-width
+   "All …" affordance that clears the selection (whole world). */
+.border-grid.multi { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+.border-grid.multi .bsel { padding: 10px 12px; font-size: 13.5px; }
+.border-grid.multi .bsel.all { grid-column: 1 / -1; font-weight: 700; }
+
 /* ---------- Icon controls (parchment chips on navy) ---------- */
 .icon-btn {
   width: 40px; height: 40px; display: grid; place-items: center;
@@ -288,6 +294,26 @@ select:focus { border-color: var(--accent); }
 .choice:disabled { cursor: default; }
 .choice.correct { background: var(--good-tint); border-color: var(--good); color: #1f5236; }
 .choice.wrong { background: var(--bad-tint); border-color: var(--bad); color: #6f2418; }
+/* eliminated by an "eliminate an option" hint — dimmed and struck through */
+.choice.eliminated { opacity: .4; text-decoration: line-through; color: var(--ink-faint); }
+.choice.eliminated:hover { transform: none; background: var(--paper-2); border-color: var(--hair); }
+
+/* hangman mask for difficult name-the-country — monospace, letter-spaced slots */
+.hangman {
+  margin-top: 12px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 22px; font-weight: 700; letter-spacing: 3px; color: var(--accent);
+  text-align: center; word-break: break-word;
+}
+
+/* cumulative location hints (find mode) */
+.hint-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.hint-list li {
+  font-size: 13px; color: var(--ink-dim); padding: 7px 11px; border-radius: var(--radius-sm);
+  background: var(--paper-inset); border: 1px solid var(--hair);
+}
+
+/* Hint button in the map HUD controls */
+.hint-btn { margin-top: 12px; }
 
 .map-actions { margin-top: 14px; display: flex; gap: 9px; }
 .map-actions .btn { width: auto; flex: 1; }

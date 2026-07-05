@@ -13,9 +13,10 @@ import { MapViewComponent } from "@/components/MapView";
 import { Scorebar } from "@/components/Scorebar";
 import { Reveal } from "@/components/Reveal";
 import { Results } from "@/components/Results";
+import { Choices } from "@/components/Choices";
 import { StatsDashboard } from "@/components/StatsDashboard";
+import { Autocomplete } from "@/components/Autocomplete";
 import { Audio2 } from "@/lib/fx";
-import type { Country } from "@/lib/types";
 
 export default function MapPage() {
   const router = useRouter();
@@ -28,11 +29,17 @@ export default function MapPage() {
   const reveal       = useQuizStore((s) => s.reveal);
   const finished     = useQuizStore((s) => s.finished);
   const choiceResult = useQuizStore((s) => s.choiceResult);
+  const choices      = useQuizStore((s) => s.choices);
+  const hintLevel    = useQuizStore((s) => s.hintLevel);
+  const eliminatedIds = useQuizStore((s) => s.eliminatedIds);
+  const revealedCount = useQuizStore((s) => s.revealedCount);
 
   const start        = useQuizStore((s) => s.start);
   const next         = useQuizStore((s) => s.next);
   const handleChoice = useQuizStore((s) => s.handleChoice);
+  const handleTyped  = useQuizStore((s) => s.handleTyped);
   const handleMapSelect = useQuizStore((s) => s.handleMapSelect);
+  const useHint      = useQuizStore((s) => s.useHint);
   const quit         = useQuizStore((s) => s.quit);
 
   const settings    = useAtlasStore((s) => s.settings);
@@ -98,13 +105,30 @@ export default function MapPage() {
 
   const item = current?.item;
   const mode = current?.mode;
+  const difficult = settings.quizDifficulty === "difficult";
 
   const progressText = session ? `${session.asked} / ${session.total}` : "";
 
-  // MC choices for name mode.
-  const st = useAtlasStore.getState().settings;
-  const activePool = Logic.filterPool(DataLayer.countries, st.region, st.subregion);
-  const choices: Country[] = mode === "name" && item ? Logic.makeChoices(item, activePool, 4) : [];
+  // Difficult name mode types the answer — candidates are the active pool's names.
+  const activePool = Logic.filterPool(DataLayer.countries, settings.regions, settings.subregions);
+  const nameCandidates = [...new Set(activePool.map((c) => c.name))];
+
+  // Hint button shows for find and name modes while the question is unanswered.
+  // (Difficult name mode always has a hangman mask; its hint reveals a letter.)
+  const canHint = !answered && (mode === "find" || mode === "name");
+  const hintLabel =
+    mode === "name" && !difficult ? "Eliminate an option" : "Hint";
+
+  // Cumulative location hints for find mode, driven by hintLevel (0..3).
+  const findHints: string[] = [];
+  if (mode === "find" && item) {
+    if (hintLevel >= 1) findHints.push(`Region: ${item.region}`);
+    if (hintLevel >= 2 && item.subregion) findHints.push(`Subregion: ${item.subregion}`);
+    if (hintLevel >= 3) {
+      const names = item.neighbours.map((n) => n.name);
+      findHints.push(names.length ? `Borders: ${names.join(", ")}` : "Island — no land borders");
+    }
+  }
 
   return (
     <>
@@ -165,31 +189,44 @@ export default function MapPage() {
                 Name the <span className="em">highlighted</span> country
               </div>
               <div className="q-sub">It&apos;s glowing on the map</div>
+              {difficult && (
+                <div className="hangman" aria-label="Answer letters">
+                  {Logic.revealName(item.name, revealedCount)}
+                </div>
+              )}
             </>
+          )}
+          {findHints.length > 0 && (
+            <ul className="hint-list">
+              {findHints.map((h) => (
+                <li key={h}>{h}</li>
+              ))}
+            </ul>
           )}
         </div>
 
         <div id="q-controls">
-          {mode === "name" && choices.length > 0 && (
-            <div className="choices">
-              {choices.map((c) => {
-                let cls = "choice";
-                if (answered && choiceResult) {
-                  if (c.id === choiceResult.correctId) cls += " correct";
-                  else if (c.id === choiceResult.pickedId) cls += " wrong";
-                }
-                return (
-                  <button
-                    key={c.id}
-                    className={cls}
-                    disabled={answered}
-                    onClick={() => handleChoice(c)}
-                  >
-                    {c.name}
-                  </button>
-                );
-              })}
-            </div>
+          {mode === "name" && !difficult && choices.length > 0 && (
+            <Choices
+              choices={choices}
+              answered={answered}
+              choiceResult={choiceResult}
+              eliminatedIds={eliminatedIds}
+              label={(c) => c.name}
+              onPick={handleChoice}
+            />
+          )}
+          {mode === "name" && difficult && item && (
+            <Autocomplete
+              key={item.id + ":name"}
+              candidates={nameCandidates}
+              onSubmit={handleTyped}
+            />
+          )}
+          {canHint && (
+            <button className="btn ghost hint-btn" onClick={useHint}>
+              💡 {hintLabel}
+            </button>
           )}
         </div>
       </div>

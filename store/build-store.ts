@@ -68,7 +68,10 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   start() {
     const atlas = useAtlasStore.getState();
     const s = atlas.settings;
-    const continent = s.region;
+    // Build works on a SINGLE continent: take the first selected region, falling
+    // back to the first supported continent when nothing is picked.
+    const continent = s.regions[0] ?? BuildGraph.SUPPORTED[0];
+    const subregion = s.subregions[0] ?? "all";
 
     if (!(BuildGraph.SUPPORTED as readonly string[]).includes(continent)) {
       toast("Pick a continent to build.", "bad");
@@ -78,11 +81,11 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     const graph = BuildGraph.build(
       DataLayer.countries.filter((c) => c.feature),
       continent,
-      s.subregion
+      subregion
     );
     if (!graph.buildable) {
       toast(
-        s.subregion && s.subregion !== "all"
+        subregion && subregion !== "all"
           ? "Not enough countries in that subregion to build."
           : "That continent can't be built yet.",
         "bad"

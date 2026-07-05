@@ -74,29 +74,142 @@ export const Logic = {
     return list[list.length - 1];
   },
 
-  // Region-biased multiple-choice distractors. Returns shuffled options incl. the answer.
+  // Smart multiple-choice distractors: rank the pool by closeness to `item`
+  // (subregion/region match, geographic proximity, name similarity), sample
+  // n-1 from a top tier so choices stay plausible but vary between plays,
+  // then return them plus the answer, shuffled. opts.rng makes it deterministic.
   makeChoices(item: Country, pool: Country[], n = 4, opts: { rng?: Rng } = {}): Country[] {
     const rng = opts.rng || Math.random;
-    const sameRegion = pool.filter((c) => c.id !== item.id && c.region === item.region);
-    const other = pool.filter((c) => c.id !== item.id && c.region !== item.region);
-    Logic._shuffle(sameRegion, rng);
-    Logic._shuffle(other, rng);
-    const picks: Country[] = [];
     const want = n - 1;
-    while (picks.length < want && sameRegion.length) picks.push(sameRegion.pop()!);
-    while (picks.length < want && other.length) picks.push(other.pop()!);
+    const itemLatLng = item.latlng || (item.centroid ? [item.centroid[1], item.centroid[0]] : null);
+
+    const candidates = pool.filter((c) => c.id !== item.id);
+    const scored = candidates.map((c) => {
+      let score = 0;
+      if (c.subregion && item.subregion && c.subregion === item.subregion) score += 100;
+      else if (c.region === item.region) score += 50;
+
+      const cLatLng = c.latlng || (c.centroid ? [c.centroid[1], c.centroid[0]] : null);
+      if (itemLatLng && cLatLng) {
+        const km = Logic.haversineKm(itemLatLng as [number, number], cLatLng as [number, number]);
+        score += Math.max(0, 40 - km / 500); // nearer => higher, tapering off over ~20,000km
+      }
+
+      const dist = Logic.levenshtein(item.name, c.name);
+      score += Math.max(0, 10 - dist);
+
+      return { c, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+
+    // Sample from the top tier, but weight by rank within it so the closest
+    // matches are still favoured — an unweighted shuffle-and-slice can drop
+    // the strongest candidates as often as the weakest once the tier holds
+    // more than `want` entries.
+    const tierSize = Math.min(scored.length, Math.max(want, 2 * want));
+    const tier = scored.slice(0, tierSize).map((s) => s.c);
+    const remaining = tier.slice();
+    const picks: Country[] = [];
+    while (picks.length < want && remaining.length) {
+      const weights = remaining.map((_, i) => remaining.length - i); // rank-weighted
+      const total = weights.reduce((a, b) => a + b, 0);
+      let r = rng() * total;
+      let idx = remaining.length - 1;
+      for (let i = 0; i < weights.length; i++) {
+        r -= weights[i];
+        if (r <= 0) {
+          idx = i;
+          break;
+        }
+      }
+      picks.push(remaining.splice(idx, 1)[0]);
+    }
+
     const options = picks.concat([item]);
     Logic._shuffle(options, rng);
     return options;
   },
 
-  // Region/subregion filter over the country list.
-  filterPool(countries: Country[], region: string, subregion: string): Country[] {
+  // Great-circle distance in km between two [lat, lng] points (haversine).
+  haversineKm(aLatLng: [number, number], bLatLng: [number, number]): number {
+    const R = 6371;
+    const [lat1, lng1] = aLatLng;
+    const [lat2, lng2] = bLatLng;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const rLat1 = (lat1 * Math.PI) / 180;
+    const rLat2 = (lat2 * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) ** 2 + Math.cos(rLat1) * Math.cos(rLat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+  },
+
+  // Classic Levenshtein edit distance, case-insensitive.
+  levenshtein(a: string, b: string): number {
+    const s = a.toLowerCase();
+    const t = b.toLowerCase();
+    const m = s.length,
+      n = t.length;
+    if (!m) return n;
+    if (!n) return m;
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+      const cur = [i];
+      for (let j = 1; j <= n; j++) {
+        cur[j] =
+          s[i - 1] === t[j - 1]
+            ? prev[j - 1]
+            : 1 + Math.min(prev[j - 1], prev[j], cur[j - 1]);
+      }
+      prev = cur;
+    }
+    return prev[n];
+  },
+
+  // Region/subregion filter over the country list. Multi-select: an empty
+  // array means "no filter" (all pass) for that dimension.
+  filterPool(countries: Country[], regions: string[], subregions: string[]): Country[] {
     return countries.filter((c) => {
-      if (region && region !== "all" && c.region !== region) return false;
-      if (subregion && subregion !== "all" && c.subregion !== subregion) return false;
+      if (regions.length && !regions.includes(c.region)) return false;
+      if (subregions.length && !(c.subregion && subregions.includes(c.subregion))) return false;
       return true;
     });
+  },
+
+  // Hangman-style mask: reveal the first `count` alphabetic letters
+  // left-to-right, hide the rest as "_", but always show non-letters
+  // (spaces, hyphens, apostrophes) literally. Slots joined with a space.
+  revealName(name: string, count: number): string {
+    let shown = 0;
+    const slots: string[] = [];
+    for (const ch of name) {
+      if (/[a-zA-Z]/.test(ch)) {
+        slots.push(shown < count ? ch : "_");
+        shown++;
+      } else {
+        slots.push(ch);
+      }
+    }
+    return slots.join(" ");
+  },
+
+  // Number of alphabetic characters in a name, so callers can cap `count`.
+  letterCount(name: string): number {
+    return (name.match(/[a-zA-Z]/g) || []).length;
+  },
+
+  // Pick a wrong (non-correct, not-yet-eliminated) choice id at random, for
+  // "eliminate one" style hints. Null once no eligible choice remains.
+  nextEliminate(
+    choices: Country[],
+    correctId: string,
+    eliminated: string[],
+    rng: Rng = Math.random
+  ): string | null {
+    const eliminatedSet = new Set(eliminated);
+    const eligible = choices.filter((c) => c.id !== correctId && !eliminatedSet.has(c.id));
+    if (!eligible.length) return null;
+    return eligible[Math.floor(rng() * eligible.length)].id;
   },
 
   // Tiny-country test. `landFraction` is the country's LARGEST polygon's

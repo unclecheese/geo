@@ -30,8 +30,8 @@ export default function BuildPage() {
   // StrictMode guard: only start() if not already active and not completed.
   useEffect(() => {
     if (!ready) return;
-    const continent = useAtlasStore.getState().settings.region;
-    if (!(BuildGraph.SUPPORTED as readonly string[]).includes(continent)) {
+    const continent = useAtlasStore.getState().settings.regions[0];
+    if (!continent || !(BuildGraph.SUPPORTED as readonly string[]).includes(continent)) {
       router.replace("/");
       return;
     }

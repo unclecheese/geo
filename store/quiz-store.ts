@@ -47,7 +47,7 @@ export interface RevealState {
   wrong?: string[];
 }
 
-// Choice state for name-mode MC — which button was picked (for visual marking).
+// Choice state for MC modes — which button was picked (for visual marking).
 export interface ChoiceResult {
   pickedId: string;
   correctId: string;
@@ -65,11 +65,18 @@ interface QuizState {
   elapsedMs: number;
   _timerId: ReturnType<typeof setInterval> | null;
 
+  // Per-question difficulty/hint state (reset in next()).
+  choices: Country[]; // multiple-choice options; [] when the question is typed
+  hintLevel: number; // find mode: how many location hints are shown (0..3)
+  eliminatedIds: string[]; // MC modes: options struck out by "eliminate one" hints
+  revealedCount: number; // typed modes: letters revealed hangman-style
+
   start: () => void;
   next: () => void;
   handleTyped: (value: string) => void;
   handleMapSelect: (country: Country) => void;
   handleChoice: (chosen: Country) => void;
+  useHint: () => void;
   grade: (correct: boolean, extra?: { missing?: string[]; wrong?: string[] }) => void;
   finish: () => void;
   quit: () => void;
@@ -87,7 +94,24 @@ const activeModes = (): ModeId[] => {
 
 const pool = (): Country[] => {
   const s = useAtlasStore.getState().settings;
-  return Logic.filterPool(DataLayer.countries, s.region, s.subregion);
+  return Logic.filterPool(DataLayer.countries, s.regions, s.subregions);
+};
+
+// Modes graded by picking/typing a country name or capital — the ones that
+// switch between multiple-choice (easy) and typed (difficult).
+const MC_MODES: ModeId[] = ["name", "capital", "flag"];
+
+// The string a hangman/hint reveals for a mode: the capital for capital mode,
+// otherwise the country name.
+const hintTarget = (item: Country, mode: ModeId): string =>
+  mode === "capital" ? item.capital || "" : item.name;
+
+// Candidate pool used to draw multiple-choice options for a given mode. Mirrors
+// the per-mode candidate lists next() uses to pick the target.
+const candPoolFor = (p: Country[], mode: ModeId): Country[] => {
+  if (mode === "capital") return p.filter((c) => c.capital && c.capital !== "—");
+  if (mode === "flag") return p.filter((c) => c.cca2);
+  return Logic.mapPool(p); // name mode: needs map geometry
 };
 
 const PRAISE = ["Nailed it!", "Correct!", "Spot on!", "Yes!", "Geography wizard ✨", "Bang on."];
@@ -104,6 +128,10 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   qStartTime: 0,
   elapsedMs: 0,
   _timerId: null,
+  choices: [],
+  hintLevel: 0,
+  eliminatedIds: [],
+  revealedCount: 0,
 
   start: () => {
     const atlas = useAtlasStore.getState();
@@ -114,8 +142,10 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     // bail if build ended up here somehow
     if (MODES[modes[0]]?.group === "build") return;
 
-    if (pool().length < 4) {
-      toast("Pick a broader region — need at least 4 countries.", "bad");
+    // Only block when there's nothing to ask — multiple-choice gracefully shows
+    // fewer than 4 buttons for a tiny pool, and typed mode needs just the one.
+    if (pool().length < 1) {
+      toast("Pick a broader region — no countries in this selection.", "bad");
       return;
     }
 
@@ -161,6 +191,10 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       reveal: null,
       choiceResult: null,
       elapsedMs: 0,
+      choices: [],
+      hintLevel: 0,
+      eliminatedIds: [],
+      revealedCount: 0,
     });
 
     // session stopwatch
@@ -208,21 +242,23 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     const order = [mode, ...Logic._shuffle(modes.filter((m) => m !== mode))];
     let item: Country | null = null;
     let chosenMode: ModeId | null = null;
+    let cand: Country[] = [];
 
     for (const m of order) {
-      let cand: Country[] = [];
+      let c: Country[] = [];
       if (m === "find" || m === "name") {
-        cand = Logic.mapPool(p);
+        c = Logic.mapPool(p);
       } else if (m === "capital") {
-        cand = p.filter((c) => c.capital && c.capital !== "—");
+        c = p.filter((c) => c.capital && c.capital !== "—");
       } else if (m === "flag") {
-        cand = p.filter((c) => c.cca2);
+        c = p.filter((c) => c.cca2);
       }
-      if (!cand.length) continue;
-      const picked = Logic.selectNextItem(cand, leit, m, { avoidId, exclude });
+      if (!c.length) continue;
+      const picked = Logic.selectNextItem(c, leit, m, { avoidId, exclude });
       if (picked) {
         item = picked;
         chosenMode = m;
+        cand = c;
         break;
       }
     }
@@ -235,6 +271,14 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     session.askedIds.add(item.id);
     session.asked += 1;
 
+    // Easy difficulty turns name/capital/flag into multiple choice; difficult
+    // (and find, which is always map-clicked) stays typed → choices stays [].
+    const difficulty = useAtlasStore.getState().settings.quizDifficulty;
+    const choices =
+      MC_MODES.includes(chosenMode) && difficulty === "easy"
+        ? Logic.makeChoices(item, cand, 4)
+        : [];
+
     set({
       current: { item, mode: chosenMode },
       answered: false,
@@ -242,6 +286,10 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       choiceResult: null,
       qStartTime: now(),
       session: { ...session },
+      choices,
+      hintLevel: 0,
+      eliminatedIds: [],
+      revealedCount: 0,
     });
 
     // Map framing for tiny countries (deferred import to avoid circular dep).
@@ -269,6 +317,8 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   handleTyped: (value: string) => {
     const state = get();
     if (!state.active || state.answered || !state.current) return;
+    // In easy/MC mode the answer comes via handleChoice, not the text box.
+    if (state.choices.length) return;
     const { item, mode } = state.current;
     const answer = mode === "capital" ? item.capital : item.name;
     get().grade(Logic.matchAnswer(value, answer || ""));
@@ -312,13 +362,40 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     const state = get();
     if (!state.active || state.answered || !state.current) return;
     const { item, mode } = state.current;
-    if (mode !== "name") return;
+    // Only the multiple-choice modes are answered by picking an option.
+    if (!MC_MODES.includes(mode)) return;
     const correct = chosen.id === item.id;
     set({ choiceResult: { pickedId: chosen.id, correctId: item.id } });
-    import("@/lib/map-view").then(({ MapView }) => {
-      if (MapView._inited) MapView.paint(item.id, correct ? "good" : "target");
-    });
+    // Only name mode lives on the map, so it's the only one to paint.
+    if (MODES[mode]?.group === "map") {
+      import("@/lib/map-view").then(({ MapView }) => {
+        if (MapView._inited) MapView.paint(item.id, correct ? "good" : "target");
+      });
+    }
     get().grade(correct);
+  },
+
+  useHint: () => {
+    const state = get();
+    if (!state.active || state.answered || !state.current) return;
+    const { item, mode } = state.current;
+
+    if (mode === "find") {
+      // Location clues escalate: region → subregion → border countries.
+      set({ hintLevel: Math.min(3, state.hintLevel + 1) });
+      return;
+    }
+
+    if (state.choices.length) {
+      // Multiple choice: strike out one remaining wrong option.
+      const id = Logic.nextEliminate(state.choices, item.id, state.eliminatedIds);
+      if (id) set({ eliminatedIds: [...state.eliminatedIds, id] });
+      return;
+    }
+
+    // Typed: reveal one more letter of the answer (capital name, or country name).
+    const answer = hintTarget(item, mode);
+    set({ revealedCount: Math.min(Logic.letterCount(answer), state.revealedCount + 1) });
   },
 
   grade: (correct, extra = {}) => {
@@ -418,6 +495,10 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       answered: false,
       choiceResult: null,
       _timerId: null,
+      choices: [],
+      hintLevel: 0,
+      eliminatedIds: [],
+      revealedCount: 0,
     });
   },
 }));

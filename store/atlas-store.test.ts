@@ -22,11 +22,19 @@ describe("migrateState", () => {
 
   it("merges saved settings onto defaults, filling missing keys", () => {
     const m = migrateState({ settings: { region: "Europe", sound: true } });
-    expect(m.settings.region).toBe("Europe");
+    // Legacy single region string migrates into the multi-select array.
+    expect(m.settings.regions).toEqual(["Europe"]);
+    expect((m.settings as unknown as Record<string, unknown>).region).toBeUndefined();
     expect(m.settings.sound).toBe(true);
     // untouched keys keep their defaults
     expect(m.settings.modes).toEqual(["find", "name"]);
     expect(m.settings.showNames).toBe(true);
+  });
+
+  it("maps a legacy 'all' region/subregion to empty arrays (no filter)", () => {
+    const m = migrateState({ settings: { region: "all", subregion: "all" } });
+    expect(m.settings.regions).toEqual([]);
+    expect(m.settings.subregions).toEqual([]);
   });
 
   it("preserves a valid leitner map and history array", () => {
@@ -55,7 +63,7 @@ describe("migrateState", () => {
       stats: { answered: 3, correct: 2, bestStreak: 2, streakHistory: [1, 2] },
     };
     const m = migrateState(legacy);
-    expect(m.settings.region).toBe("Asia");
+    expect(m.settings.regions).toEqual(["Asia"]);
     expect(m.settings.showNames).toBe(false);
     expect(m.stats.answered).toBe(3);
     expect(m.leitner["392:capital"].box).toBe(2);

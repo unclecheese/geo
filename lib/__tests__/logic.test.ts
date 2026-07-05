@@ -82,22 +82,103 @@ describe("Logic.sanitizeModes", () => {
 
 describe("Logic.filterPool", () => {
   const pool = [mk("1", "Asia", { subregion: "Eastern Asia" }), mk("2", "Europe"), mk("3", "Asia")];
-  it("filters by region and subregion", () => {
-    expect(Logic.filterPool(pool, "Asia", "all").map((c) => c.id)).toEqual(["1", "3"]);
-    expect(Logic.filterPool(pool, "Asia", "Eastern Asia").map((c) => c.id)).toEqual(["1"]);
-    expect(Logic.filterPool(pool, "all", "all")).toHaveLength(3);
+  it("filters by region and subregion (multi-select)", () => {
+    expect(Logic.filterPool(pool, ["Asia"], []).map((c) => c.id)).toEqual(["1", "3"]);
+    expect(Logic.filterPool(pool, ["Asia"], ["Eastern Asia"]).map((c) => c.id)).toEqual(["1"]);
+    expect(Logic.filterPool(pool, [], [])).toHaveLength(3);
+  });
+  it("treats an empty array as no filter, and unions multiple selections", () => {
+    expect(Logic.filterPool(pool, ["Asia", "Europe"], []).map((c) => c.id)).toEqual(["1", "2", "3"]);
+    expect(Logic.filterPool(pool, [], ["Eastern Asia"]).map((c) => c.id)).toEqual(["1"]);
   });
 });
 
 describe("Logic.makeChoices", () => {
-  it("always includes the answer and prefers same-region distractors", () => {
+  it("always includes the answer and prefers same-subregion distractors over same-region-only", () => {
+    // want = n-1 = 2, so the top tier (2*want = 4) holds exactly the two
+    // same-subregion mates plus the two nearest same-region-only filler —
+    // the weaker, other-region country is ranked out of the tier entirely,
+    // so it can never appear regardless of the rng draw.
+    const item = mk("1", "Asia", { subregion: "Eastern Asia" });
+    const pool = [
+      item,
+      mk("2", "Asia", { subregion: "Eastern Asia" }),
+      mk("3", "Asia", { subregion: "Eastern Asia" }),
+      mk("4", "Asia", { subregion: "South-Eastern Asia" }),
+      mk("5", "Asia", { subregion: "South-Eastern Asia" }),
+      mk("6", "Europe", { subregion: "Western Europe" }),
+    ];
+    for (const seed of [1, 2, 3, 7, 42]) {
+      const opts = Logic.makeChoices(item, pool, 3, { rng: seeded(seed) });
+      expect(opts).toHaveLength(3);
+      expect(opts).toContainEqual(item);
+      expect(opts.some((c) => c.id === "6")).toBe(false); // ranked out of the tier
+    }
+
+    // Across many seeds, the same-subregion pair should be picked far more
+    // often than the same-region-only pair, since rank-weighted sampling
+    // favours the top of the tier without being fully deterministic.
+    let subregionPicks = 0;
+    for (let seed = 0; seed < 200; seed++) {
+      const opts = Logic.makeChoices(item, pool, 3, { rng: seeded(seed) });
+      subregionPicks += opts.filter((c) => c.subregion === "Eastern Asia" && c.id !== "1").length;
+    }
+    expect(subregionPicks).toBeGreaterThan(200); // well above the ~50% chance floor
+  });
+
+  it("falls back to fewer distractors when the pool is small", () => {
     const item = mk("1", "Asia");
-    const pool = [item, mk("2", "Asia"), mk("3", "Asia"), mk("4", "Europe"), mk("5", "Europe")];
-    const opts = Logic.makeChoices(item, pool, 4, { rng: seeded(7) });
-    expect(opts).toHaveLength(4);
+    const opts = Logic.makeChoices(item, [item, mk("2", "Asia")], 4, { rng: seeded(3) });
+    expect(opts).toHaveLength(2);
     expect(opts).toContainEqual(item);
-    const sameRegion = opts.filter((c) => c.region === "Asia" && c.id !== "1");
-    expect(sameRegion.length).toBe(2); // both Asian distractors used before European
+  });
+});
+
+describe("Logic.revealName", () => {
+  it("reveals the first `count` letters and masks the rest, showing punctuation literally", () => {
+    expect(Logic.revealName("Chile", 0)).toBe("_ _ _ _ _");
+    expect(Logic.revealName("Chile", 2)).toBe("C h _ _ _");
+    expect(Logic.revealName("Costa Rica", 3)).toBe("C o s _ _   _ _ _ _");
+  });
+});
+
+describe("Logic.letterCount", () => {
+  it("counts only alphabetic characters", () => {
+    expect(Logic.letterCount("Chile")).toBe(5);
+    expect(Logic.letterCount("Costa Rica")).toBe(9);
+    expect(Logic.letterCount("Côte d'Ivoire")).toBe(10); // ô isn't [a-zA-Z], matching revealName's mask
+  });
+});
+
+describe("Logic.nextEliminate", () => {
+  const choices = [mk("1", "Asia"), mk("2", "Asia"), mk("3", "Asia"), mk("4", "Asia")];
+  it("returns a wrong, non-eliminated id", () => {
+    const id = Logic.nextEliminate(choices, "1", [], seeded(5));
+    expect(id).not.toBe("1");
+    expect(["2", "3", "4"]).toContain(id);
+  });
+  it("never returns an already-eliminated id, and returns null once exhausted", () => {
+    const id = Logic.nextEliminate(choices, "1", ["2", "3"], seeded(5));
+    expect(id).toBe("4");
+    expect(Logic.nextEliminate(choices, "1", ["2", "3", "4"], seeded(5))).toBeNull();
+  });
+});
+
+describe("Logic.levenshtein", () => {
+  it("computes classic edit distance, case-insensitively", () => {
+    expect(Logic.levenshtein("chile", "Chile")).toBe(0);
+    expect(Logic.levenshtein("kitten", "sitting")).toBe(3);
+    expect(Logic.levenshtein("", "abc")).toBe(3);
+  });
+});
+
+describe("Logic.haversineKm", () => {
+  it("approximates London to Paris at roughly 340km", () => {
+    const london: [number, number] = [51.5074, -0.1278];
+    const paris: [number, number] = [48.8566, 2.3522];
+    const km = Logic.haversineKm(london, paris);
+    expect(km).toBeGreaterThan(300);
+    expect(km).toBeLessThan(380);
   });
 });
 

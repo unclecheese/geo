@@ -9,6 +9,7 @@ import { useAtlasStore } from "@/store/atlas-store";
 import { useQuizStore } from "@/store/quiz-store";
 import { useData } from "@/components/DataProvider";
 import { Autocomplete } from "@/components/Autocomplete";
+import { Choices } from "@/components/Choices";
 import { Reveal } from "@/components/Reveal";
 import { Scorebar } from "@/components/Scorebar";
 import { Results } from "@/components/Results";
@@ -23,11 +24,16 @@ export default function QuizPage() {
   const answered = useQuizStore((s) => s.answered);
   const reveal = useQuizStore((s) => s.reveal);
   const finished = useQuizStore((s) => s.finished);
+  const choiceResult = useQuizStore((s) => s.choiceResult);
+  const choices = useQuizStore((s) => s.choices);
 
   const start = useQuizStore((s) => s.start);
   const next = useQuizStore((s) => s.next);
   const handleTyped = useQuizStore((s) => s.handleTyped);
+  const handleChoice = useQuizStore((s) => s.handleChoice);
   const quit = useQuizStore((s) => s.quit);
+
+  const settings = useAtlasStore((s) => s.settings);
 
   const [showStats, setShowStats] = useState(false);
 
@@ -62,10 +68,10 @@ export default function QuizPage() {
 
   const item = current?.item;
   const mode = current?.mode;
+  const difficult = settings.quizDifficulty === "difficult";
 
-  // Autocomplete candidates from the active pool.
-  const s = useAtlasStore.getState().settings;
-  const activePool = Logic.filterPool(DataLayer.countries, s.region, s.subregion);
+  // Autocomplete candidates from the active pool (difficult mode only).
+  const activePool = Logic.filterPool(DataLayer.countries, settings.regions, settings.subregions);
   const capitalCandidates = [
     ...new Set(
       activePool.filter((c) => c.capital && c.capital !== "—").map((c) => c.capital as string)
@@ -99,24 +105,44 @@ export default function QuizPage() {
               <div className="q-prompt">
                 What is the capital of <span className="em">{item.name}</span>?
               </div>
-              <div className="q-sub">Type the city name</div>
+              <div className="q-sub">{difficult ? "Type the city name" : "Pick the capital"}</div>
             </div>
-            <Autocomplete
-              key={item.id + ":capital"}
-              candidates={capitalCandidates}
-              onSubmit={handleTyped}
-            />
+            {difficult ? (
+              <Autocomplete
+                key={item.id + ":capital"}
+                candidates={capitalCandidates}
+                onSubmit={handleTyped}
+              />
+            ) : (
+              <Choices
+                choices={choices}
+                answered={answered}
+                choiceResult={choiceResult}
+                label={(c) => c.capital || "—"}
+                onPick={handleChoice}
+              />
+            )}
           </>
         )}
 
         {item && mode === "flag" && (
           <>
-            <FlagPrompt key={item.id + ":flag"} src={item.flagSvg || ""} />
-            <Autocomplete
-              key={item.id + ":flag-ac"}
-              candidates={nameCandidates}
-              onSubmit={handleTyped}
-            />
+            <FlagPrompt key={item.id + ":flag"} src={item.flagSvg || ""} difficult={difficult} />
+            {difficult ? (
+              <Autocomplete
+                key={item.id + ":flag-ac"}
+                candidates={nameCandidates}
+                onSubmit={handleTyped}
+              />
+            ) : (
+              <Choices
+                choices={choices}
+                answered={answered}
+                choiceResult={choiceResult}
+                label={(c) => c.name}
+                onPick={handleChoice}
+              />
+            )}
           </>
         )}
 
@@ -136,7 +162,7 @@ export default function QuizPage() {
 }
 
 // Flag image with the same onError → placeholder swap as the single-file app.
-function FlagPrompt({ src }: { src: string }) {
+function FlagPrompt({ src, difficult }: { src: string; difficult: boolean }) {
   const [failed, setFailed] = useState(false);
   return (
     <div>
@@ -151,7 +177,7 @@ function FlagPrompt({ src }: { src: string }) {
         Which country&apos;s flag is this?
       </div>
       <div className="q-sub" style={{ textAlign: "center" }}>
-        Type the country name
+        {difficult ? "Type the country name" : "Pick the country"}
       </div>
     </div>
   );

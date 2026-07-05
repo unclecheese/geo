@@ -66,10 +66,15 @@ export interface HistoryEntry {
  *  expert = name the country and its capital on placement. */
 export type BuildDifficulty = "easy" | "hard" | "expert";
 
+/** Quiz answer style: easy = multiple choice, difficult = type the answer.
+ *  Applies to name-the-country, capital, and flag. */
+export type QuizDifficulty = "easy" | "difficult";
+
 export interface Settings {
   modes: ModeId[];
-  region: string;
-  subregion: string;
+  regions: string[]; // selected regions; empty = all regions
+  subregions: string[]; // selected subregions; empty = all subregions
+  quizDifficulty: QuizDifficulty; // multiple-choice vs typed for name/capital/flag
   session: string; // "round" (fixed count) | "around" (around the world — every country)
   roundLen: number;
   timed: boolean;

@@ -9,8 +9,9 @@ export function defaultState(): AtlasState {
     version: STATE_VERSION,
     settings: {
       modes: ["find", "name"] as ModeId[],
-      region: "all",
-      subregion: "all",
+      regions: [] as string[],
+      subregions: [] as string[],
+      quizDifficulty: "easy" as const,
       session: "round",
       roundLen: 15,
       timed: false,
@@ -36,6 +37,19 @@ export function migrateState(raw: unknown): AtlasState {
   if (!raw || typeof raw !== "object") return d;
   const r = raw as Partial<AtlasState>;
   const settings = { ...d.settings, ...(r.settings || {}) };
+  // Migrate pre-multi-select single region/subregion strings → arrays
+  // ("all" meant no filter, so it becomes an empty array).
+  const rs = (r.settings || {}) as Record<string, unknown>;
+  if (!Array.isArray(rs.regions)) {
+    settings.regions = typeof rs.region === "string" && rs.region !== "all" ? [rs.region] : [];
+  }
+  if (!Array.isArray(rs.subregions)) {
+    settings.subregions =
+      typeof rs.subregion === "string" && rs.subregion !== "all" ? [rs.subregion] : [];
+  }
+  if (settings.quizDifficulty !== "difficult") settings.quizDifficulty = "easy";
+  delete (settings as Record<string, unknown>).region;
+  delete (settings as Record<string, unknown>).subregion;
   // "endless" was removed in favour of "around the world".
   if (settings.session === "endless") settings.session = "around";
   // Derive a difficulty for states saved before it existed (off = name-for-credit).

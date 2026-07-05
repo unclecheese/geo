@@ -6,7 +6,7 @@ import { MODES } from "@/lib/modes";
 import { Logic } from "@/lib/logic";
 import { DataLayer } from "@/lib/data-layer";
 import { BuildGraph } from "@/lib/build-graph";
-import type { BuildDifficulty, ModeGroup, ModeId } from "@/lib/types";
+import type { BuildDifficulty, ModeGroup, ModeId, QuizDifficulty } from "@/lib/types";
 import { useAtlasStore } from "@/store/atlas-store";
 import { useHydrated } from "@/lib/use-hydrated";
 import { useData } from "@/components/DataProvider";
@@ -54,16 +54,18 @@ export default function MenuPage() {
     ? Array.from(new Set(DataLayer.countries.map((c) => c.region))).sort()
     : [];
   const regionOptions = isBuild ? [...BuildGraph.SUPPORTED] : allRegions;
+  // Subregion options reflect the selected regions (or every region when none
+  // are selected). Multi-select for map/quiz; build stays single-continent.
   const subOptions = ready
     ? Array.from(
       new Set(
         DataLayer.countries
-          .filter((c) => settings.region === "all" || c.region === settings.region)
+          .filter((c) => !settings.regions.length || settings.regions.includes(c.region))
           .map((c) => c.subregion as string)
+          .filter(Boolean)
       )
     ).sort()
     : [];
-  const showSubregion = settings.region !== "all"; // hidden for "all continents"
 
   // Open a card → normalise the mode set to that family and show its settings.
   const openCard = (type: CardType) => {
@@ -79,10 +81,14 @@ export default function MenuPage() {
       patch.modes = ["border"];
     } else {
       patch.modes = ["build"];
-      if (!(BuildGraph.SUPPORTED as readonly string[]).includes(settings.region)) {
-        patch.region = BuildGraph.SUPPORTED[0];
-        patch.subregion = "all";
+      // Build needs exactly one supported continent; coerce the selection down.
+      const current = settings.regions[0];
+      if (!current || !(BuildGraph.SUPPORTED as readonly string[]).includes(current)) {
+        patch.regions = [BuildGraph.SUPPORTED[0]];
+      } else {
+        patch.regions = [current];
       }
+      patch.subregions = [];
     }
     setSettings(patch);
     setSelected(type);
@@ -98,10 +104,38 @@ export default function MenuPage() {
     setSettings({ modes: [...set] });
   };
 
-  const onRegionChange = (region: string) => setSettings({ region, subregion: "all" });
+  // Build: single continent — replace the whole selection, clear subregions.
+  const onBuildRegion = (region: string) => setSettings({ regions: [region], subregions: [] });
+
+  // Map/Quiz: toggle a region in/out. Dropping a region also drops any of its
+  // subregions so the two selections stay consistent.
+  const toggleRegion = (region: string) => {
+    const has = settings.regions.includes(region);
+    const regions = has
+      ? settings.regions.filter((r) => r !== region)
+      : [...settings.regions, region];
+    const inScope = new Set(
+      DataLayer.countries
+        .filter((c) => !regions.length || regions.includes(c.region))
+        .map((c) => c.subregion as string)
+    );
+    const subregions = settings.subregions.filter((s) => inScope.has(s));
+    setSettings({ regions, subregions });
+  };
+
+  const toggleSubregion = (sub: string) => {
+    const has = settings.subregions.includes(sub);
+    setSettings({
+      subregions: has
+        ? settings.subregions.filter((s) => s !== sub)
+        : [...settings.subregions, sub],
+    });
+  };
 
   const setDifficulty = (d: BuildDifficulty) =>
     setSettings({ buildDifficulty: d, showNames: d === "easy" });
+
+  const setQuizDifficulty = (d: QuizDifficulty) => setSettings({ quizDifficulty: d });
 
   const start = () => {
     Audio2.ensure();
@@ -161,33 +195,105 @@ export default function MenuPage() {
     !settings.modes.some((m) => MODES[m]?.group === selected);
 
   /* ---- shared sub-blocks ---- */
-  const RegionBlock = (
+  // Build: one continent only — a single-select dropdown, as before.
+  const BuildRegionBlock = (
+    <div className="section">
+      <h3>Continent</h3>
+      <select value={settings.regions[0] ?? ""} onChange={(e) => onBuildRegion(e.target.value)} disabled={!ready}>
+        {regionOptions.map((r) => (
+          <option key={r} value={r}>{r}</option>
+        ))}
+      </select>
+    </div>
+  );
+
+  // Map/Quiz: multi-select toggle grids. An empty selection means the whole
+  // world; "All regions" selects everything explicitly so you can then deselect
+  // the few you want to exclude (e.g. all subregions except the Caribbean).
+  // Both empty and a full set filter identically, so "all" reads as selected
+  // in either case (mirrored for subregions).
+  const allRegionsOn =
+    hydrated && (settings.regions.length === 0 || settings.regions.length === regionOptions.length);
+  const allSubsOn =
+    hydrated &&
+    (settings.subregions.length === 0 || settings.subregions.length === subOptions.length);
+  const MultiRegionBlock = (
     <>
       <div className="section">
-        <h3>{isBuild ? "Continent" : "Region"}</h3>
-        <select value={settings.region} onChange={(e) => onRegionChange(e.target.value)} disabled={!ready}>
-          {!isBuild && <option value="all">All continents</option>}
-          {regionOptions.map((r) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
-      </div>
-      {showSubregion && (
-        <div className="section">
-          <h3>Subregion</h3>
-          <select
-            value={subOptions.includes(settings.subregion) ? settings.subregion : "all"}
-            onChange={(e) => setSettings({ subregion: e.target.value })}
+        <h3>Regions</h3>
+        <div className="border-grid multi">
+          <button
+            className={"bsel all" + (allRegionsOn ? " sel" : "")}
+            onClick={() => setSettings({ regions: [...regionOptions], subregions: [] })}
             disabled={!ready}
           >
-            <option value="all">{isBuild ? `All of ${settings.region}` : "All subregions"}</option>
+            🌍 All regions
+          </button>
+          {regionOptions.map((r) => (
+            <button
+              key={r}
+              className={"bsel" + (hydrated && settings.regions.includes(r) ? " sel" : "")}
+              onClick={() => toggleRegion(r)}
+              disabled={!ready}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+        <p className="hint-line">None selected = whole world. Or tap All, then deselect a region to exclude it.</p>
+      </div>
+      {subOptions.length > 0 && (
+        <div className="section">
+          <h3>Subregions</h3>
+          <div className="border-grid multi">
+            <button
+              className={"bsel all" + (allSubsOn ? " sel" : "")}
+              onClick={() => setSettings({ subregions: [...subOptions] })}
+              disabled={!ready}
+            >
+              All subregions
+            </button>
             {subOptions.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <button
+                key={s}
+                className={"bsel" + (hydrated && settings.subregions.includes(s) ? " sel" : "")}
+                onClick={() => toggleSubregion(s)}
+                disabled={!ready}
+              >
+                {s}
+              </button>
             ))}
-          </select>
+          </div>
+          <p className="hint-line">
+            Tap a few to narrow, or tap All subregions then deselect any you want to exclude — e.g. everything except the Caribbean.
+          </p>
         </div>
       )}
     </>
+  );
+
+  const RegionBlock = isBuild ? BuildRegionBlock : MultiRegionBlock;
+
+  // Easy = multiple choice, Difficult = type the answer (map name + quiz).
+  const DifficultyBlock = (
+    <div className="section">
+      <h3>Difficulty</h3>
+      <div className="seg">
+        <button
+          className={hydrated && settings.quizDifficulty === "easy" ? "on" : ""}
+          onClick={() => setQuizDifficulty("easy")}
+        >
+          Easy
+        </button>
+        <button
+          className={hydrated && settings.quizDifficulty === "difficult" ? "on" : ""}
+          onClick={() => setQuizDifficulty("difficult")}
+        >
+          Difficult
+        </button>
+      </div>
+      <p className="hint-line">Easy = multiple choice. Difficult = type the answer.</p>
+    </div>
   );
 
   const LengthBlock = (
@@ -300,6 +406,8 @@ export default function MenuPage() {
           )}
 
           {RegionBlock}
+
+          {(selected === "map" || selected === "expert") && DifficultyBlock}
 
           {!isBuild && LengthBlock}
 

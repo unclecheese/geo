@@ -21,7 +21,7 @@ const neighboursOf = (c: Country): Country[] => c.neighbours.filter(clickable);
 
 const pool = (): Country[] => {
   const s = useAtlasStore.getState().settings;
-  return Logic.filterPool(DataLayer.countries, s.region, s.subregion);
+  return Logic.filterPool(DataLayer.countries, s.regions, s.subregions);
 };
 
 // Targets: framable countries in the active pool that have ≥1 clickable neighbour.
