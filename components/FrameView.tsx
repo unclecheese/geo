@@ -28,7 +28,15 @@ export function FrameView({ target, shown, width = 640, height = 440 }: FrameVie
     const frame: Feature = {
       type: "Feature",
       properties: {},
-      geometry: { type: "Polygon", coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] },
+      geometry: {
+        type: "MultiPoint",
+        coordinates: [
+          [w, s],
+          [e, s],
+          [e, n],
+          [w, n],
+        ],
+      },
     };
     const pad = 8;
     const proj = geoMercator().fitExtent([[pad, pad], [width - pad, height - pad]], frame);
