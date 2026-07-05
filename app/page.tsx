@@ -18,8 +18,7 @@ import { StatsDashboard } from "@/components/StatsDashboard";
 type CardType = ModeGroup; // "map" | "expert" | "borders" | "build"
 const CARDS: { type: CardType; icon: string; title: string; tag: string; blurb: string }[] = [
   { type: "map", icon: "🗺️", title: "Map identification", tag: "Find it · name it", blurb: "Pin a country on the world map, or name the one that's glowing." },
-  { type: "expert", icon: "🚩", title: "Quiz", tag: "Flags · capitals", blurb: "Rapid-fire flags and capitals. No map — just recall." },
-  { type: "borders", icon: "🧭", title: "Borders", tag: "Name the neighbours", blurb: "Zoom in on a country and name every one that borders it." },
+  { type: "expert", icon: "🚩", title: "Quiz", tag: "Flags · capitals · borders", blurb: "Rapid-fire flags, capitals, and framed borders. No world map — just recall." },
   { type: "build", icon: "🧩", title: "Puzzle", tag: "Build a continent", blurb: "Drag every country into place and rebuild a continent." },
 ];
 
@@ -75,10 +74,14 @@ export default function MenuPage() {
       const keep = settings.modes.filter((m) => MAP_MODES.includes(m));
       patch.modes = keep.length ? keep : ["find", "name"];
     } else if (type === "expert") {
-      const keep = settings.modes.filter((m) => QUIZ_MODES.includes(m));
-      patch.modes = keep.length ? keep : ["capital", "flag"];
-    } else if (type === "borders") {
-      patch.modes = ["border"];
+      // Quiz card hosts capital/flag (combinable) and border (exclusive). Keep a
+      // saved border selection; otherwise keep any capital/flag, defaulting to both.
+      if (settings.modes.includes("border")) {
+        patch.modes = ["border"];
+      } else {
+        const keep = settings.modes.filter((m) => QUIZ_MODES.includes(m));
+        patch.modes = keep.length ? keep : ["capital", "flag"];
+      }
     } else {
       patch.modes = ["build"];
       // Build needs exactly one supported continent; coerce the selection down.
@@ -94,11 +97,19 @@ export default function MenuPage() {
     setSelected(type);
   };
 
-  // Toggle a mode within the active family. May leave zero selected — the Start
-  // button is disabled in that case (see `noModes`).
+  // Toggle a mode within the Quiz card. Capitals + Flags combine freely and
+  // interleave; Borders is a standalone quiz, so selecting it clears the others
+  // (and selecting either of them clears Borders).
   const toggleMode = (id: ModeId) => {
+    if (id === "border") {
+      const on = settings.modes.includes("border");
+      setSettings({ modes: on ? ["capital"] : ["border"] });
+      return;
+    }
     const group = MODES[id].group;
-    const set = new Set(settings.modes.filter((m) => MODES[m]?.group === group));
+    const set = new Set(
+      settings.modes.filter((m) => MODES[m]?.group === group && m !== "border")
+    );
     if (set.has(id)) set.delete(id);
     else set.add(id);
     setSettings({ modes: [...set] });
@@ -188,11 +199,14 @@ export default function MenuPage() {
   const modeOn = (id: ModeId) => hydrated && settings.modes.includes(id);
   const card = CARDS.find((c) => c.type === selected);
 
-  // Map/Quiz require at least one mode switched on; build always has "build".
+  // Map/Quiz require at least one mode switched on. In the Quiz card, Borders (its
+  // own group) also counts as a valid selection.
   const noModes =
     hydrated &&
     (selected === "map" || selected === "expert") &&
-    !settings.modes.some((m) => MODES[m]?.group === selected);
+    !settings.modes.some(
+      (m) => MODES[m]?.group === selected || (selected === "expert" && m === "border")
+    );
 
   /* ---- shared sub-blocks ---- */
   // Build: one continent only — a single-select dropdown, as before.
@@ -398,6 +412,13 @@ export default function MenuPage() {
                 <div>🏛️ Capitals <small>Name each country&apos;s capital city</small></div>
                 <span className="switch">
                   <input type="checkbox" checked={modeOn("capital")} onChange={() => toggleMode("capital")} />
+                  <span />
+                </span>
+              </label>
+              <label className="toggle">
+                <div>🧭 Borders <small>Name the neighbours in a framed picture (its own quiz)</small></div>
+                <span className="switch">
+                  <input type="checkbox" checked={modeOn("border")} onChange={() => toggleMode("border")} />
                   <span />
                 </span>
               </label>
