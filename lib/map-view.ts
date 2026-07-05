@@ -492,47 +492,6 @@ export const MapView = {
     this.svg.transition().duration(800).call(this.zoom.transform, t);
   },
 
-  // Borders mode: zoom so the target's bounding box spans a CONSTANT fraction of
-  // the viewport, regardless of the country's real size — a "picture frame" where
-  // the subject dominates (France and Cambodia end up the same apparent size).
-  // Clamped only by the map's zoom limits, so even tiny countries fill the frame.
-  frameConstant(country: Country, frac = 0.62) {
-    if (!this.svg || !this.zoom || !this.path || !this.projection) return;
-    let bounds: [[number, number], [number, number]];
-    if (country.feature) {
-      bounds = this.path.bounds(country.feature) as [[number, number], [number, number]];
-    } else if (country.centroid) {
-      const p = this.projection(country.centroid)!;
-      bounds = [
-        [p[0] - 18, p[1] - 18],
-        [p[0] + 18, p[1] + 18],
-      ];
-    } else {
-      return;
-    }
-    const [[x0, y0], [x1, y1]] = bounds;
-    const dx = Math.max(1, x1 - x0),
-      dy = Math.max(1, y1 - y0);
-    const cx = (x0 + x1) / 2,
-      cy = (y0 + y1) / 2;
-    let k = frac / Math.max(dx / this.width, dy / this.height);
-    k = Math.max(1, Math.min(200, k));
-    const t = zoomIdentity
-      .translate(this.width / 2, this.height / 2)
-      .scale(k)
-      .translate(-cx, -cy);
-    this.svg.transition().duration(800).call(this.zoom.transform, t);
-  },
-
-  // Repaint the whole borders board in one idempotent pass: reset everything to
-  // base, then colour the home country (amber), found neighbours (green), and the
-  // currently-selected sliver (blue).
-  paintBorders(opts: { homeId: string; foundIds: string[]; activeId?: string | null }) {
-    this.clearHighlights();
-    this.paint(opts.homeId, "target");
-    for (const id of opts.foundIds) this.paint(id, "good");
-    if (opts.activeId) this.paint(opts.activeId, "sel");
-  },
 
   // Country for an on-screen click. First the tiny-country outline boxes: the
   // click is mapped back into g-space and tested for containment (boxes don't
