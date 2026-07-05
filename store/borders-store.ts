@@ -5,73 +5,80 @@ import { Audio2, Confetti } from "@/lib/fx";
 import { useAtlasStore } from "@/store/atlas-store";
 import { toast } from "@/store/toast-store";
 import type { Country } from "@/lib/types";
-import type { QuizSession, RevealState } from "@/store/quiz-store";
+import type { QuizSession } from "@/store/quiz-store";
 
-// "Borders" module: a target country is framed at constant size; the player
-// clicks each neighbouring sliver and names it. Retry-friendly (no penalty for
-// wrong guesses); giving up reveals the rest and marks the target as missed.
-// Map-based, so it drives the MapView singleton like the find/name quiz, but its
-// multi-target click→name loop is distinct enough to warrant its own store.
+// "Borders" quiz: a target country is shown in a static framed picture with its
+// land neighbours numbered around it (see components/FrameView). The player
+// identifies each numbered neighbour — matching names to numbers (easy) or typing
+// each (difficult) — then submits the whole question at once. No live map, so this
+// store holds no d3/MapView; it is a plain state machine over the framed picture.
 
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
-// A neighbour is answerable only if it has geometry/marker to click on.
-const clickable = (c: Country): boolean => !!(c.feature || c.centroid);
-const neighboursOf = (c: Country): Country[] => c.neighbours.filter(clickable);
+const SHOW_MAX = 6;
+
+// A neighbour is numberable only if it has geometry/marker to render.
+const drawable = (c: Country): boolean => !!(c.feature || c.centroid);
+const neighboursOf = (c: Country): Country[] => c.neighbours.filter(drawable);
 
 const pool = (): Country[] => {
   const s = useAtlasStore.getState().settings;
   return Logic.filterPool(DataLayer.countries, s.regions, s.subregions);
 };
 
-// Targets: framable countries in the active pool that have ≥1 clickable neighbour.
+// Targets: framable countries in the active pool with ≥1 drawable neighbour.
 const targetPool = (): Country[] =>
-  pool().filter((c) => clickable(c) && neighboursOf(c).length > 0);
+  pool().filter((c) => c.feature && neighboursOf(c).length > 0);
 
-const PRAISE = ["Nailed it!", "Correct!", "Spot on!", "Yes!", "Bang on."];
-const praise = () => PRAISE[Math.floor(Math.random() * PRAISE.length)];
+export interface BordersResult {
+  country: Country; // a numbered neighbour
+  num: number; // its 1-based badge number
+  ok: boolean;
+}
 
-const withMap = (fn: (mv: typeof import("@/lib/map-view").MapView) => void) => {
-  import("@/lib/map-view").then(({ MapView }) => {
-    if (MapView._inited) fn(MapView);
-  });
-};
+export interface BordersReveal {
+  target: Country;
+  correct: boolean;
+  ms: number;
+  results: BordersResult[];
+}
 
 interface BordersState {
   active: boolean;
   session: QuizSession | null;
-  target: Country | null;
-  required: Country[]; // neighbours to identify
-  foundIds: Set<string>;
-  revealedIds: Set<string>; // neighbours given up on
-  activeId: string | null; // sliver currently selected for naming
-  answered: boolean; // question complete, reveal showing
-  reveal: RevealState | null;
   finished: boolean;
+  target: Country | null;
+  shown: Country[]; // numbered neighbours; shown[i] carries badge number i+1
+  candidates: Country[]; // easy: names to match (shown + distractors), shuffled; [] when difficult
+  easy: boolean; // difficulty snapshot for this question
+  assign: Record<string, number | null>; // easy: candidate.id -> chosen badge number, or null
+  typed: Record<number, string>; // difficult: badge number -> typed value
+  answered: boolean;
+  reveal: BordersReveal | null;
   qStartTime: number;
   elapsedMs: number;
   _timerId: ReturnType<typeof setInterval> | null;
 
   start: () => void;
   next: () => void;
-  handleMapClick: (country: Country) => void;
-  submitName: (value: string) => void;
-  revealAll: () => void;
+  setAssign: (candidateId: string, num: number | null) => void;
+  setTyped: (num: number, value: string) => void;
+  submit: () => void;
   quit: () => void;
-  _complete: () => void;
 }
 
 export const useBordersStore = create<BordersState>((set, get) => ({
   active: false,
   session: null,
+  finished: false,
   target: null,
-  required: [],
-  foundIds: new Set(),
-  revealedIds: new Set(),
-  activeId: null,
+  shown: [],
+  candidates: [],
+  easy: true,
+  assign: {},
+  typed: {},
   answered: false,
   reveal: null,
-  finished: false,
   qStartTime: 0,
   elapsedMs: 0,
   _timerId: null,
@@ -83,13 +90,12 @@ export const useBordersStore = create<BordersState>((set, get) => ({
       toast("No countries with land borders in this selection — pick a broader region.", "bad");
       return;
     }
-
     const t = get()._timerId;
     if (t) clearInterval(t);
 
     const session: QuizSession = {
       type: s.session,
-      screen: "map",
+      screen: "quiz",
       total: s.session === "round" ? s.roundLen : targets.length,
       timed: s.timed,
       asked: 0,
@@ -106,10 +112,10 @@ export const useBordersStore = create<BordersState>((set, get) => ({
       finished: false,
       session,
       target: null,
-      required: [],
-      foundIds: new Set(),
-      revealedIds: new Set(),
-      activeId: null,
+      shown: [],
+      candidates: [],
+      assign: {},
+      typed: {},
       answered: false,
       reveal: null,
       elapsedMs: 0,
@@ -132,14 +138,10 @@ export const useBordersStore = create<BordersState>((set, get) => ({
     if (!state.active || !state.session) return;
     const session = state.session;
 
-    withMap((mv) => mv.clearHighlights());
-
     if (session.asked >= session.total) {
-      // Wrap up the session (mirrors quiz-store.finish for round/around types).
       const t = state._timerId;
       if (t) clearInterval(t);
       session.elapsedMs = session.startTime ? now() - session.startTime : session.elapsedMs;
-      withMap((mv) => mv.reset());
       Confetti.burst();
       set({ active: false, finished: true, session: { ...session }, target: null, reveal: null, _timerId: null });
       return;
@@ -151,7 +153,6 @@ export const useBordersStore = create<BordersState>((set, get) => ({
       exclude: session.askedIds,
     });
     if (!picked) {
-      // Nothing left to ask — end the round early.
       set({ session: { ...session, total: session.asked } });
       get().next();
       return;
@@ -160,130 +161,77 @@ export const useBordersStore = create<BordersState>((set, get) => ({
     session.askedIds.add(picked.id);
     session.asked += 1;
 
+    const shown = Logic.pickShown(neighboursOf(picked), SHOW_MAX);
+    const easy = useAtlasStore.getState().settings.quizDifficulty === "easy";
+
+    // Easy mode: pad the candidate list up to SHOW_MAX with nearby non-neighbour
+    // distractors (makeChoices ranks by proximity/region), then shuffle. When the
+    // shown neighbours already fill the list there are no distractors.
+    let candidates: Country[] = [];
+    if (easy) {
+      const excluded = new Set([picked.id, ...picked.neighbours.map((n) => n.id)]);
+      const base = DataLayer.countries.filter((c) => !excluded.has(c.id));
+      const want = Math.max(0, SHOW_MAX - shown.length);
+      const distractors = want
+        ? Logic.makeChoices(picked, base, want + 1)
+            .filter((c) => c.id !== picked.id)
+            .slice(0, want)
+        : [];
+      candidates = Logic._shuffle(shown.concat(distractors));
+    }
+
     set({
       target: picked,
-      required: neighboursOf(picked),
-      foundIds: new Set(),
-      revealedIds: new Set(),
-      activeId: null,
+      shown,
+      candidates,
+      easy,
+      assign: {},
+      typed: {},
       answered: false,
       reveal: null,
       qStartTime: now(),
       session: { ...session },
     });
+  },
 
-    withMap((mv) => {
-      mv.frameConstant(picked);
-      mv.paintBorders({ homeId: picked.id, foundIds: [] });
+  setAssign: (candidateId, num) => {
+    const state = get();
+    if (!state.active || state.answered) return;
+    // A badge number holds one candidate at a time — clear any prior holder.
+    const assign: Record<string, number | null> = { ...state.assign };
+    if (num !== null) {
+      for (const id of Object.keys(assign)) if (assign[id] === num) assign[id] = null;
+    }
+    assign[candidateId] = num;
+    set({ assign });
+  },
+
+  setTyped: (num, value) => {
+    const state = get();
+    if (!state.active || state.answered) return;
+    set({ typed: { ...state.typed, [num]: value } });
+  },
+
+  submit: () => {
+    const state = get();
+    const { target, shown, session } = state;
+    if (!state.active || state.answered || !target || !session) return;
+
+    const results: BordersResult[] = shown.map((c, i) => {
+      const num = i + 1;
+      const ok = state.easy
+        ? state.assign[c.id] === num
+        : Logic.matchAnswer(state.typed[num] || "", c.name);
+      return { country: c, num, ok };
     });
-  },
-
-  handleMapClick: (country: Country) => {
-    const state = get();
-    if (!state.active || state.answered || !state.target) return;
-    const target = state.target;
-
-    if (country.id === target.id) {
-      toast(`That's ${target.name} — name the countries that border it.`);
-      return;
-    }
-    if (state.foundIds.has(country.id)) {
-      toast(`${country.name} — already found ✓`, "good");
-      return;
-    }
-    const isNeighbour = state.required.some((n) => n.id === country.id);
-    if (!isNeighbour) {
-      withMap((mv) => mv.flashSelect(country.id));
-      toast(`${country.name} doesn't border ${target.name}.`, "bad");
-      return;
-    }
-    // Select this sliver for naming.
-    set({ activeId: country.id });
-    withMap((mv) =>
-      mv.paintBorders({ homeId: target.id, foundIds: [...state.foundIds], activeId: country.id })
-    );
-  },
-
-  submitName: (value: string) => {
-    const state = get();
-    if (!state.active || state.answered || !state.target || !state.activeId) return;
-    const target = state.target;
-    const activeCountry = state.required.find((n) => n.id === state.activeId);
-    if (!activeCountry) return;
-
-    // Empty submit (Skip) = deselect the sliver, let them choose another.
-    if (!value.trim()) {
-      set({ activeId: null });
-      withMap((mv) => mv.paintBorders({ homeId: target.id, foundIds: [...state.foundIds] }));
-      return;
-    }
-
-    if (Logic.matchAnswer(value, activeCountry.name)) {
-      const foundIds = new Set(state.foundIds);
-      foundIds.add(activeCountry.id);
-      Audio2.correct();
-      toast(`${praise()} ${activeCountry.name} ✓`, "good");
-      set({ foundIds, activeId: null });
-      withMap((mv) => mv.paintBorders({ homeId: target.id, foundIds: [...foundIds] }));
-      if (foundIds.size >= state.required.length) get()._complete();
-      return;
-    }
-
-    // Wrong — but is it another (real) neighbour? Give a gentler nudge.
-    const elsewhere = state.required.find(
-      (n) => n.id !== activeCountry.id && !state.foundIds.has(n.id) && Logic.matchAnswer(value, n.name)
-    );
-    Audio2.wrong();
-    if (elsewhere) {
-      toast(`Close! ${elsewhere.name} borders ${target.name}, but it's in a different place.`);
-    } else {
-      toast("Not quite — try again.", "bad");
-    }
-    // Stay on the same sliver (retry, no penalty).
-  },
-
-  revealAll: () => {
-    const state = get();
-    if (!state.active || state.answered || !state.target) return;
-    const revealedIds = new Set(state.revealedIds);
-    for (const n of state.required) if (!state.foundIds.has(n.id)) revealedIds.add(n.id);
-    set({ revealedIds, activeId: null });
-    get()._complete();
-  },
-
-  quit: () => {
-    const t = get()._timerId;
-    if (t) clearInterval(t);
-    withMap((mv) => {
-      mv.clearHighlights();
-      mv.reset();
-    });
-    set({
-      active: false,
-      finished: false,
-      session: null,
-      target: null,
-      required: [],
-      foundIds: new Set(),
-      revealedIds: new Set(),
-      activeId: null,
-      answered: false,
-      reveal: null,
-      _timerId: null,
-    });
-  },
-
-  // ---- internal ----
-  _complete: () => {
-    const state = get();
-    const target = state.target;
-    const session = state.session;
-    if (!target || !session) return;
+    // Easy mode also requires every distractor to be left unassigned.
+    const distractorsClean = state.easy
+      ? state.candidates.every((c) => shown.some((s) => s.id === c.id) || state.assign[c.id] == null)
+      : true;
+    const correct = results.every((r) => r.ok) && distractorsClean;
 
     const ms = Math.round(now() - state.qStartTime);
-    const correct = state.revealedIds.size === 0;
     const s = { ...session };
-
     if (correct) {
       s.correct += 1;
       s.streak += 1;
@@ -295,39 +243,41 @@ export const useBordersStore = create<BordersState>((set, get) => ({
         Audio2.milestone();
         toast("🔥 " + s.streak + " in a row!", "good");
       } else {
-        toast(`All ${state.required.length} neighbours of ${target.name}!`, "good");
+        toast(`All ${shown.length} neighbours of ${target.name}!`, "good");
       }
     } else {
       s.streak = 0;
       Audio2.wrong();
-      toast(`Revealed — ${target.name} has ${state.required.length} neighbours.`, "bad");
+      const got = results.filter((r) => r.ok).length;
+      toast(`${got} / ${shown.length} — that's ${target.name}.`, "bad");
     }
 
     const atlas = useAtlasStore.getState();
     atlas.recordVerdict({ id: target.id, mode: "border", correct, ms, region: target.region, streak: s.streak });
     atlas.recordBestStreak(s.bestStreak);
 
-    // Final board: home amber, found green, missed (revealed) red.
-    withMap((mv) => {
-      mv.clearHighlights();
-      mv.paint(target.id, "target");
-      for (const id of state.foundIds) mv.paint(id, "good");
-      for (const id of state.revealedIds) mv.paint(id, "bad");
-      if (atlas.settings.heatmap) {
-        /* heatmap repaint happens on next() via clearHighlights */
-      }
-    });
-
     set({
       answered: true,
       session: s,
-      reveal: {
-        item: target,
-        correct,
-        ms,
-        mode: "border",
-        missing: [...state.revealedIds],
-      },
+      reveal: { target, correct, ms, results },
+    });
+  },
+
+  quit: () => {
+    const t = get()._timerId;
+    if (t) clearInterval(t);
+    set({
+      active: false,
+      finished: false,
+      session: null,
+      target: null,
+      shown: [],
+      candidates: [],
+      assign: {},
+      typed: {},
+      answered: false,
+      reveal: null,
+      _timerId: null,
     });
   },
 }));

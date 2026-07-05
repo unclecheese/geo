@@ -1,129 +1,103 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-// MapView is browser-only; stub it so withMap() no-ops (it gates on _inited).
-vi.mock("@/lib/map-view", () => ({ MapView: { _inited: false } }));
-// Capture toast messages so we can assert "close" vs plain "wrong".
+// Isolate the store from browser-only deps.
 vi.mock("@/store/toast-store", () => ({ toast: vi.fn() }));
+vi.mock("@/lib/fx", () => ({
+  Audio2: { correct: vi.fn(), wrong: vi.fn(), milestone: vi.fn(), ensure: vi.fn() },
+  Confetti: { burst: vi.fn() },
+}));
 
 import { useBordersStore } from "@/store/borders-store";
-import { toast } from "@/store/toast-store";
+import { useAtlasStore } from "@/store/atlas-store";
 import type { Country } from "@/lib/types";
 import type { QuizSession } from "@/store/quiz-store";
 
 const mk = (id: string, name: string): Country =>
-  ({ id, name, region: "Europe", neighbours: [], feature: {} } as unknown as Country);
+  ({ id, name, region: "Europe", neighbours: [], feature: {}, centroid: [0, 0] } as unknown as Country);
 
 const FRANCE = mk("250", "France");
 const SPAIN = mk("724", "Spain");
 const GERMANY = mk("276", "Germany");
 const ITALY = mk("380", "Italy");
-const REQUIRED = [SPAIN, GERMANY, ITALY];
+const PORTUGAL = mk("620", "Portugal"); // distractor: not a neighbour here
 
 const baseSession = (): QuizSession => ({
-  type: "round",
-  screen: "map",
-  total: 10,
-  timed: false,
-  asked: 1,
-  score: 0,
-  streak: 0,
-  bestStreak: 0,
-  correct: 0,
-  askedIds: new Set(["250"]),
-  startTime: 0,
-  elapsedMs: 0,
+  type: "round", screen: "quiz", total: 10, timed: false,
+  asked: 1, score: 0, streak: 0, bestStreak: 0, correct: 0,
+  askedIds: new Set(["250"]), startTime: 0, elapsedMs: 0,
 });
 
-// Seed the store mid-question (target framed, awaiting clicks).
+// Seed the store mid-question, awaiting answers.
 const seed = (over: Partial<ReturnType<typeof useBordersStore.getState>> = {}) =>
   useBordersStore.setState({
-    active: true,
-    answered: false,
-    finished: false,
-    session: baseSession(),
-    target: FRANCE,
-    required: REQUIRED,
-    foundIds: new Set(),
-    revealedIds: new Set(),
-    activeId: null,
-    qStartTime: 0,
-    reveal: null,
+    active: true, answered: false, finished: false,
+    session: baseSession(), target: FRANCE,
+    shown: [SPAIN, GERMANY, ITALY],
+    candidates: [], easy: false, assign: {}, typed: {},
+    reveal: null, qStartTime: 0, elapsedMs: 0, _timerId: null,
     ...over,
   });
 
 beforeEach(() => {
-  vi.mocked(toast).mockClear();
+  useAtlasStore.setState({ leitner: {}, history: [], stats: { answered: 0, correct: 0, bestStreak: 0, streakHistory: [] } });
 });
 
-describe("borders-store: naming a selected sliver", () => {
-  it("accepts the correct name and locks the neighbour green", () => {
-    seed({ activeId: SPAIN.id });
-    useBordersStore.getState().submitName("Spain");
-    const s = useBordersStore.getState();
-    expect([...s.foundIds]).toContain(SPAIN.id);
-    expect(s.activeId).toBeNull();
-    expect(s.answered).toBe(false); // two neighbours still to find
-  });
-
-  it("treats another real neighbour as a gentle 'Close!' miss, not a found", () => {
-    seed({ activeId: SPAIN.id });
-    useBordersStore.getState().submitName("Germany"); // a neighbour, wrong sliver
-    const s = useBordersStore.getState();
-    expect(s.foundIds.size).toBe(0); // nothing locked in
-    expect(s.activeId).toBe(SPAIN.id); // stays on the same sliver (retry)
-    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toMatch(/Close!/);
-  });
-
-  it("treats a non-neighbour name as a plain retry", () => {
-    seed({ activeId: SPAIN.id });
-    useBordersStore.getState().submitName("Brazil");
-    const s = useBordersStore.getState();
-    expect(s.foundIds.size).toBe(0);
-    expect(s.activeId).toBe(SPAIN.id);
-    expect(vi.mocked(toast).mock.calls.at(-1)?.[0]).toMatch(/Not quite/);
-  });
-
-  it("empty submit (skip) deselects the sliver", () => {
-    seed({ activeId: SPAIN.id });
-    useBordersStore.getState().submitName("");
-    expect(useBordersStore.getState().activeId).toBeNull();
-  });
-});
-
-describe("borders-store: completing a question", () => {
-  it("marks correct when every neighbour is named (no reveals)", () => {
-    seed({ foundIds: new Set([SPAIN.id, GERMANY.id]), activeId: ITALY.id });
-    useBordersStore.getState().submitName("Italy");
-    const s = useBordersStore.getState();
-    expect(s.answered).toBe(true);
-    expect(s.reveal?.correct).toBe(true);
-    expect(s.reveal?.item).toBe(FRANCE);
-    expect(s.session?.correct).toBe(1);
-  });
-
-  it("revealAll gives up: marks incorrect and lists the unfound as missing", () => {
-    seed({ foundIds: new Set([SPAIN.id]) });
-    useBordersStore.getState().revealAll();
-    const s = useBordersStore.getState();
-    expect(s.answered).toBe(true);
-    expect(s.reveal?.correct).toBe(false);
-    expect(s.reveal?.missing?.sort()).toEqual([GERMANY.id, ITALY.id].sort());
-    expect(s.session?.streak).toBe(0);
-  });
-});
-
-describe("borders-store: clicking the map", () => {
-  it("selects a neighbour for naming, ignores the target, rejects non-neighbours", () => {
-    seed();
+describe("borders submit — difficult (typed)", () => {
+  it("marks the question correct only when every blank matches", () => {
+    seed({ easy: false, typed: { 1: "spain", 2: "germany", 3: "italy" } });
+    useBordersStore.getState().submit();
     const st = useBordersStore.getState();
+    expect(st.answered).toBe(true);
+    expect(st.reveal!.correct).toBe(true);
+    expect(st.reveal!.results.every((r) => r.ok)).toBe(true);
+  });
 
-    st.handleMapClick(FRANCE); // the home country
-    expect(useBordersStore.getState().activeId).toBeNull();
+  it("is incorrect (all-or-nothing) when one blank is wrong, with per-blank results", () => {
+    seed({ easy: false, typed: { 1: "spain", 2: "germany", 3: "belgium" } });
+    useBordersStore.getState().submit();
+    const st = useBordersStore.getState();
+    expect(st.reveal!.correct).toBe(false);
+    expect(st.reveal!.results.map((r) => r.ok)).toEqual([true, true, false]);
+  });
+});
 
-    st.handleMapClick({ id: "076", name: "Brazil" } as unknown as Country); // not a neighbour
-    expect(useBordersStore.getState().activeId).toBeNull();
+describe("borders submit — easy (matching)", () => {
+  it("is correct when neighbours map to their numbers and distractors are left unassigned", () => {
+    seed({
+      easy: true,
+      candidates: [SPAIN, GERMANY, ITALY, PORTUGAL],
+      assign: { "724": 1, "276": 2, "380": 3, "620": null },
+    });
+    useBordersStore.getState().submit();
+    expect(useBordersStore.getState().reveal!.correct).toBe(true);
+  });
 
-    st.handleMapClick(GERMANY); // a real neighbour
-    expect(useBordersStore.getState().activeId).toBe(GERMANY.id);
+  it("is incorrect when a distractor is assigned a number", () => {
+    seed({
+      easy: true,
+      candidates: [SPAIN, GERMANY, ITALY, PORTUGAL],
+      assign: { "724": 1, "276": 2, "380": 3, "620": 1 },
+    });
+    useBordersStore.getState().submit();
+    expect(useBordersStore.getState().reveal!.correct).toBe(false);
+  });
+});
+
+describe("borders setAssign", () => {
+  it("gives a badge number to at most one candidate (steals it)", () => {
+    seed({ easy: true, candidates: [SPAIN, GERMANY], assign: { "724": 1 } });
+    useBordersStore.getState().setAssign("276", 1);
+    const a = useBordersStore.getState().assign;
+    expect(a["724"]).toBeNull();
+    expect(a["276"]).toBe(1);
+  });
+});
+
+describe("borders submit — verdict recorded", () => {
+  it("records a single border verdict for the target", () => {
+    seed({ easy: false, typed: { 1: "spain", 2: "germany", 3: "italy" } });
+    useBordersStore.getState().submit();
+    expect(useAtlasStore.getState().leitner["250:border"]).toBeTruthy();
+    expect(useAtlasStore.getState().stats.answered).toBe(1);
   });
 });
