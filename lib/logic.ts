@@ -276,6 +276,30 @@ export const Logic = {
     return pool.filter(Logic.hasMapGeometry);
   },
 
+  // Neighbours to number in a borders question: up to `max`, a random subset when
+  // there are more (so large countries vary which six they ask). rng is injectable
+  // so the pick is testable.
+  pickShown(neighbours: Country[], max = 6, rng: Rng = Math.random): Country[] {
+    if (neighbours.length <= max) return neighbours.slice();
+    return Logic._shuffle(neighbours.slice(), rng).slice(0, max);
+  },
+
+  // Grow a [[west,south],[east,north]] lon/lat box by `factor` of its span on each
+  // side, so a country's frame shows a margin of its surroundings. Latitude clamps
+  // to the poles; longitude is left unclamped (frames are local).
+  expandBounds(
+    bounds: [[number, number], [number, number]],
+    factor = 0.5
+  ): [[number, number], [number, number]] {
+    const [[w, s], [e, n]] = bounds;
+    const dx = (e - w) * factor;
+    const dy = (n - s) * factor;
+    return [
+      [w - dx, Math.max(-90, s - dy)],
+      [e + dx, Math.min(90, n + dy)],
+    ];
+  },
+
   // Mastery score 0..1 for an item across a mode set (avg normalised box).
   masteryFor(leitner: Leitner, id: string, modes: ModeId[]): number | null {
     let sum = 0,

@@ -142,6 +142,42 @@ describe("Logic.revealName", () => {
   });
 });
 
+describe("Logic.pickShown", () => {
+  it("returns all neighbours unchanged when at or below the cap", () => {
+    const ns = [mk("a", "Europe"), mk("b", "Europe"), mk("c", "Europe")];
+    expect(Logic.pickShown(ns, 6)).toHaveLength(3);
+    expect(Logic.pickShown(ns, 6).map((c) => c.id).sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("picks exactly `max` when there are more, all drawn from the input", () => {
+    const ns = Array.from({ length: 14 }, (_, i) => mk("n" + i, "Asia"));
+    const ids = new Set(ns.map((c) => c.id));
+    const got = Logic.pickShown(ns, 6, seeded(7));
+    expect(got).toHaveLength(6);
+    expect(new Set(got.map((c) => c.id)).size).toBe(6); // no duplicates
+    for (const c of got) expect(ids.has(c.id)).toBe(true);
+  });
+
+  it("does not mutate the input array", () => {
+    const ns = Array.from({ length: 10 }, (_, i) => mk("n" + i, "Asia"));
+    Logic.pickShown(ns, 6, seeded(1));
+    expect(ns).toHaveLength(10);
+  });
+});
+
+describe("Logic.expandBounds", () => {
+  it("grows the box by the factor of its span on each side", () => {
+    const out = Logic.expandBounds([[0, 0], [10, 20]], 0.5);
+    expect(out).toEqual([[-5, -10], [15, 30]]);
+  });
+
+  it("clamps latitude to the poles", () => {
+    const out = Logic.expandBounds([[0, -80], [10, 80]], 0.5);
+    expect(out[0][1]).toBe(-90);
+    expect(out[1][1]).toBe(90);
+  });
+});
+
 describe("Logic.letterCount", () => {
   it("counts only alphabetic characters", () => {
     expect(Logic.letterCount("Chile")).toBe(5);
