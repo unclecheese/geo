@@ -26,3 +26,4 @@ settings.local.json
 
 # scratch / temp render files
 scratch_*
+.vercel

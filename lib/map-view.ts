@@ -57,6 +57,11 @@ export const MapView = {
   // unzoomed g coordinate space). A missed click resolves to the nearest of
   // these within HIT_CUTOFF on-screen px, giving every country a water buffer.
   _sites: [] as { x: number; y: number; country: Country }[],
+  // Padded outline boxes framing tiny countries, in unzoomed g coordinates. Drawn
+  // inside the zoom group (so they scale with the map and reveal the country's
+  // geography when zoomed in) and sized so no two overlap. They are the primary
+  // click target for islands and microstates.
+  _boxes: [] as { x0: number; y0: number; x1: number; y1: number; country: Country }[],
   _downPt: null as [number, number] | null,
   _pendingSelect: null as ReturnType<typeof setTimeout> | null,
   _mouseupHandler: null as (() => void) | null,
@@ -78,6 +83,13 @@ export const MapView = {
   // for the click to count as selecting it. Constant in screen space, so zooming
   // in shrinks the geographic catch area and lets you separate close neighbours.
   HIT_CUTOFF: 44,
+
+  // Tiny-country outline boxes, sized in unzoomed g units. BOX_PAD is added
+  // around the country's own bounding box; BOX_MAX_HALF caps how large an
+  // isolated island's box can grow. Both are shrunk further where needed so no
+  // two boxes overlap (see Logic.boxHalfSizesNoOverlap).
+  BOX_PAD: 6,
+  BOX_MAX_HALF: 20,
 
   init(svgEl: SVGSVGElement, wrapEl: HTMLElement) {
     if (this._inited) this.destroy();
@@ -139,8 +151,9 @@ export const MapView = {
       ])
       .on("zoom", (ev) => {
         this.g!.attr("transform", ev.transform);
-        // keep markers readable at any zoom (country names never shown)
-        this.gMarkers!.selectAll("circle.marker").attr("r", 2.4 / Math.sqrt(ev.transform.k));
+        // Country borders stay a constant on-screen width. The tiny-country boxes
+        // scale with the map (revealing geography as you zoom in) but keep a crisp
+        // outline via CSS vector-effect, so they need no per-zoom adjustment here.
         this.gCountries!.selectAll("path").attr("stroke-width", 0.3 / ev.transform.k);
         // keep the target arrow a constant on-screen size
         if (this._arrowPt) {
@@ -164,13 +177,13 @@ export const MapView = {
       this._downPt = pointer(ev, this.svg!.node());
     });
 
-    // Water-buffer selection: a click that misses every country polygon (the
-    // polygons stopPropagation their own clicks, so this only fires on "ocean")
-    // resolves to the nearest country within HIT_CUTOFF. Skipped after a drag,
-    // which was a pan — not a pick.
+    // Selection for clicks that miss every country polygon (the polygons
+    // stopPropagation their own clicks, so this only fires on "ocean"): resolve
+    // to the tiny-country box under the point, else the nearest country within
+    // HIT_CUTOFF. Skipped after a drag, which was a pan — not a pick.
     this.svg.on("click", (ev: MouseEvent) => {
+      if (this._isDrag(ev)) return;
       const [mx, my] = pointer(ev, this.svg!.node());
-      if (this._downPt && Math.hypot(mx - this._downPt[0], my - this._downPt[1]) > 6) return;
       const c = this._countryAt(mx, my);
       if (c) this._scheduleSelect(c);
     });
@@ -202,37 +215,65 @@ export const MapView = {
       });
 
     // Build a click-resolution site (projected largest-polygon centroid) for
-    // every locatable country, and a visible marker dot for those whose biggest
-    // landmass is too small to see. Clicking is handled by nearest-site lookup
-    // (see _countryAt), so the dots need no hit target of their own — which also
-    // ends the old bug where fixed-radius hit discs overlapped and stole clicks.
+    // every locatable country, and collect the tiny ones — those whose biggest
+    // landmass is too small to see or reliably click.
     const proj = this.projection;
+    // Sphere area normalises the tiny-country test so it's viewport-independent,
+    // and its square root scales the box padding/cap with the map's linear size
+    // so boxes stay proportionally the same on a phone and a wide monitor.
+    const sphereArea = this.path.area({ type: "Sphere" } as never) || 1;
+    const boxScale = Math.sqrt(sphereArea / 859371); // 859371 = sphere px² at the 1440×810 reference
+    const boxPad = this.BOX_PAD * boxScale;
+    const boxMaxHalf = this.BOX_MAX_HALF * boxScale;
     this._sites = [];
-    const markerData: Country[] = [];
+    const tiny: { c: Country; cx: number; cy: number; half: number }[] = [];
     for (const c of DataLayer.countries) {
       if (!c.centroid) continue;
       const p = proj(c.centroid);
       if (!p || !isFinite(p[0]) || !isFinite(p[1])) continue;
       this._sites.push({ x: p[0], y: p[1], country: c });
-      if (!c.feature || Logic.isTiny(largestPolyPxArea(this.path, c.feature))) {
-        this.tinyIds.add(c.id);
-        markerData.push(c);
+      if (c.feature && !Logic.isTiny(largestPolyPxArea(this.path, c.feature) / sphereArea)) continue;
+      this.tinyIds.add(c.id);
+      // Desired box: centre on the country's projected bounds (or its centroid
+      // when it has no polygon), sized to enclose it plus BOX_PAD, capped.
+      let cx = p[0],
+        cy = p[1],
+        extent = 0;
+      if (c.feature) {
+        const b = this.path.bounds(c.feature);
+        cx = (b[0][0] + b[1][0]) / 2;
+        cy = (b[0][1] + b[1][1]) / 2;
+        extent = Math.max(b[1][0] - b[0][0], b[1][1] - b[0][1]) / 2;
       }
+      const half = Math.min(extent + boxPad, boxMaxHalf);
+      tiny.push({ c, cx, cy, half });
     }
 
+    // Shrink boxes so none overlap, then build their world-space extents.
+    const centers = tiny.map((t) => ({ x: t.cx, y: t.cy }));
+    const halves = Logic.boxHalfSizesNoOverlap(centers, tiny.map((t) => t.half));
+    this._boxes = tiny.map((t, i) => ({
+      x0: t.cx - halves[i],
+      y0: t.cy - halves[i],
+      x1: t.cx + halves[i],
+      y1: t.cy + halves[i],
+      country: t.c,
+    }));
+
     this.gMarkers
-      .selectAll<SVGGElement, Country>("g.mk")
-      .data(markerData, (d) => d.id)
-      .join((enter) => {
-        const grp = enter
-          .append("g")
-          .attr("class", "mk")
-          .attr("transform", (d) => {
-            const p = d.centroid ? proj(d.centroid) : null;
-            return p ? `translate(${p[0]},${p[1]})` : "translate(-99,-99)";
-          });
-        grp.append("circle").attr("class", "marker").attr("r", 2.4);
-        return grp;
+      .selectAll<SVGRectElement, (typeof this._boxes)[number]>("rect.mk-box")
+      .data(this._boxes, (d) => d.country.id)
+      .join("rect")
+      .attr("class", "mk-box")
+      .attr("x", (d) => d.x0)
+      .attr("y", (d) => d.y0)
+      .attr("width", (d) => d.x1 - d.x0)
+      .attr("height", (d) => d.y1 - d.y0)
+      .attr("rx", 1.5)
+      .on("click", function (ev: MouseEvent, d) {
+        ev.stopPropagation();
+        if (self._isDrag(ev)) return;
+        self._scheduleSelect(d.country);
       });
 
     // Country names intentionally never rendered — keep labels layer empty.
@@ -303,7 +344,12 @@ export const MapView = {
     this.gCountries
       .selectAll<SVGPathElement, Feature>("path.country")
       .attr("fill", (d) => this._fillFor(d));
-    this.gMarkers.selectAll("g.mk circle.marker").attr("fill", "var(--accent-2)");
+    // Reset tiny-country boxes to their neutral outline (drop any inline colour).
+    this.gMarkers
+      .selectAll<SVGRectElement, { country: Country }>("rect.mk-box")
+      .attr("stroke", null)
+      .attr("fill", null)
+      .classed("hl", false);
   },
 
   paint(id: string, kind: "good" | "bad" | "target" | "sel") {
@@ -315,11 +361,14 @@ export const MapView = {
       .attr("fill", colors[kind])
       .attr("stroke", "#fff")
       .attr("stroke-opacity", 0.9);
+    // For a tiny country the polygon is sub-pixel, so the visible feedback is the
+    // outline box: colour its stroke and give it a faint matching wash.
     this.gMarkers
-      .selectAll<SVGGElement, Country>("g.mk")
-      .filter((d) => d.id === id)
-      .select("circle.marker")
-      .attr("fill", colors[kind]);
+      .selectAll<SVGRectElement, { country: Country }>("rect.mk-box")
+      .filter((d) => d.country.id === id)
+      .attr("stroke", colors[kind])
+      .attr("fill", colors[kind] + "33")
+      .classed("hl", true);
   },
 
   flashSelect(id: string) {
@@ -334,6 +383,17 @@ export const MapView = {
       .transition()
       .duration(500)
       .attr("stroke-width", 0.3 / k);
+    // Tiny countries have no visible polygon to flash, so pulse their box.
+    if (this.gMarkers) {
+      this.gMarkers
+        .selectAll<SVGRectElement, { country: Country }>("rect.mk-box")
+        .filter((d) => d.country.id === id)
+        .interrupt()
+        .attr("stroke", "var(--cream)")
+        .transition()
+        .duration(600)
+        .attr("stroke", null);
+    }
   },
 
   zoomToPoint(mx: number, my: number, k = 4) {
@@ -423,15 +483,29 @@ export const MapView = {
     if (opts.activeId) this.paint(opts.activeId, "sel");
   },
 
-  // Nearest country to an on-screen point within HIT_CUTOFF px, or null. Sites
-  // are stored in unzoomed g-space, so apply the current zoom transform before
-  // measuring — that keeps the catch radius constant on screen at any zoom.
+  // Country for an on-screen click. First the tiny-country outline boxes: the
+  // click is mapped back into g-space and tested for containment (boxes don't
+  // overlap, so at most one matches). Otherwise the nearest country centroid
+  // within HIT_CUTOFF on-screen px — a water buffer for everything else.
   _countryAt(mx: number, my: number): Country | null {
-    if (!this.svg || !this._sites.length) return null;
+    if (!this.svg) return null;
     const t = zoomTransform(this.svg.node()!);
+    const [wx, wy] = t.invert([mx, my]);
+    for (const b of this._boxes) {
+      if (wx >= b.x0 && wx <= b.x1 && wy >= b.y0 && wy <= b.y1) return b.country;
+    }
+    if (!this._sites.length) return null;
     const screen = this._sites.map((s) => ({ x: t.applyX(s.x), y: t.applyY(s.y) }));
     const i = Logic.nearestWithin(screen, mx, my, this.HIT_CUTOFF);
     return i >= 0 ? this._sites[i].country : null;
+  },
+
+  // True if the pointer has moved far enough since mousedown that this was a
+  // drag/pan rather than a click, so selection should be skipped.
+  _isDrag(ev: MouseEvent): boolean {
+    if (!this._downPt || !this.svg) return false;
+    const [mx, my] = pointer(ev, this.svg.node()!);
+    return Math.hypot(mx - this._downPt[0], my - this._downPt[1]) > 6;
   },
 
   _scheduleSelect(country: Country) {
@@ -470,6 +544,7 @@ export const MapView = {
     this.onSelect = null;
     this.tinyIds = new Set();
     this._sites = [];
+    this._boxes = [];
     this._downPt = null;
     this._inited = false;
   },

@@ -441,8 +441,20 @@ svg.spark { width: 100%; height: 70px; display: block; }
 .country:hover { stroke: var(--accent); stroke-width: .9px; }
 .country.selectable-hover:hover { filter: drop-shadow(0 0 6px rgba(176,118,43,.85)); }
 
-/* tiny-country markers (visual aid only; clicks resolve to nearest country) */
-.marker { fill: var(--accent); stroke: var(--cream); stroke-width: .5px; pointer-events: none; }
+/* tiny-country outline boxes: a padded frame that's a big, non-overlapping click
+   target and reveals the country's geography when zoomed in. The box scales with
+   the map but keeps a constant on-screen stroke via non-scaling-stroke. */
+.mk-box {
+  fill: transparent;
+  stroke: var(--accent);
+  stroke-width: 1.4px;
+  stroke-dasharray: 3 2;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+  transition: stroke .15s ease;
+}
+.mk-box:hover { stroke: var(--cream); stroke-dasharray: none; }
+.mk-box.hl { stroke-dasharray: none; stroke-width: 1.8px; }
 
 /* highlight classes (on the dark map — kept vivid for legibility) */
 .hl-good   { fill: #34d399 !important; stroke: #fff !important; stroke-opacity: .9 !important; }

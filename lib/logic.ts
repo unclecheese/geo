@@ -99,13 +99,15 @@ export const Logic = {
     });
   },
 
-  // Tiny-country threshold from the projected area of a country's LARGEST
-  // polygon (px²). Below this there's no visible landmass to aim at, so the map
-  // draws a marker dot instead. Judged on the biggest polygon rather than total
-  // land so scattered archipelagos (Fiji, Solomon Is.) — lots of sub-pixel
-  // islands, no single visible blob — count as tiny too.
-  isTiny(largestPolyPxArea: number, threshold = 20): boolean {
-    return largestPolyPxArea < threshold;
+  // Tiny-country test. `landFraction` is the country's LARGEST polygon's
+  // projected area as a fraction of the whole projected sphere — viewport
+  // independent, unlike raw pixels, so the same countries are boxed on a phone
+  // and a wide monitor. Below the threshold there's no visible landmass to aim
+  // at, so the map frames the country with an outline box. Judged on the biggest
+  // polygon (not total land) so scattered archipelagos (Fiji, the Solomons) —
+  // many sub-pixel islands, no single visible blob — count as tiny too.
+  isTiny(landFraction: number, threshold = 2.3e-5): boolean {
+    return landFraction < threshold;
   },
 
   // Index of the site nearest to (x, y) within `maxDist`, or -1 if none is in
@@ -123,6 +125,31 @@ export const Logic = {
       }
     }
     return best;
+  },
+
+  // Square-box half-sizes that guarantee no two boxes overlap. Each box is
+  // capped at half the Chebyshev distance to its nearest neighbouring centre:
+  // two axis-aligned squares are disjoint exactly when the Chebyshev distance
+  // between their centres is ≥ the sum of their half-sizes, so capping every box
+  // this way keeps every pair apart while letting isolated boxes grow to their
+  // full desired size. Used to frame tiny countries with a padded outline that
+  // is a big, non-overlapping click target.
+  boxHalfSizesNoOverlap(centers: { x: number; y: number }[], desired: number[]): number[] {
+    const n = centers.length;
+    const out: number[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      let nearest = Infinity;
+      for (let j = 0; j < n; j++) {
+        if (j === i) continue;
+        const cheb = Math.max(
+          Math.abs(centers[i].x - centers[j].x),
+          Math.abs(centers[i].y - centers[j].y)
+        );
+        if (cheb < nearest) nearest = cheb;
+      }
+      out[i] = Math.min(desired[i], nearest / 2);
+    }
+    return out;
   },
 
   // A country can be a target in map modes only if it has a polygon to

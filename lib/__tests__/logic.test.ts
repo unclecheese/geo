@@ -119,10 +119,55 @@ describe("Logic.fmtDuration", () => {
 });
 
 describe("Logic.isTiny", () => {
-  it("flags a country whose largest polygon is below the threshold", () => {
-    expect(Logic.isTiny(0.9)).toBe(true); // Micronesia's largest island
-    expect(Logic.isTiny(18.4)).toBe(true); // Fiji's largest island — scattered
-    expect(Logic.isTiny(28.1)).toBe(false); // Kuwait — a visible solid blob
+  it("flags a country whose largest polygon is a tiny fraction of the sphere", () => {
+    // Fractions of projected sphere area (viewport-independent).
+    expect(Logic.isTiny(6e-7)).toBe(true); // Micronesia's largest island
+    expect(Logic.isTiny(2.1e-5)).toBe(true); // Fiji's largest island — just under
+    expect(Logic.isTiny(3.3e-5)).toBe(false); // Kuwait — a visible solid blob
+  });
+});
+
+describe("Logic.boxHalfSizesNoOverlap", () => {
+  // Two axis-aligned squares overlap iff their centre Chebyshev distance is
+  // strictly less than the sum of their half-sizes.
+  const overlaps = (
+    a: { x: number; y: number },
+    ha: number,
+    b: { x: number; y: number },
+    hb: number
+  ) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) < ha + hb - 1e-9;
+
+  it("leaves an isolated box at its desired size", () => {
+    expect(Logic.boxHalfSizesNoOverlap([{ x: 0, y: 0 }], [20])).toEqual([20]);
+  });
+
+  it("shrinks close neighbours so their boxes never overlap", () => {
+    const centers = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 }, // 10 apart, both want half=20 → must shrink to ≤5 each
+      { x: 200, y: 200 }, // isolated → keeps its desired size
+    ];
+    const halves = Logic.boxHalfSizesNoOverlap(centers, [20, 20, 8]);
+    expect(halves[0]).toBeCloseTo(5);
+    expect(halves[1]).toBeCloseTo(5);
+    expect(halves[2]).toBe(8);
+    for (let i = 0; i < centers.length; i++)
+      for (let j = i + 1; j < centers.length; j++)
+        expect(overlaps(centers[i], halves[i], centers[j], halves[j])).toBe(false);
+  });
+
+  it("never lets any pair overlap across a dense cluster", () => {
+    const centers = [
+      { x: 0, y: 0 },
+      { x: 3, y: 1 },
+      { x: 5, y: 4 },
+      { x: 1, y: 6 },
+      { x: 40, y: 40 },
+    ];
+    const halves = Logic.boxHalfSizesNoOverlap(centers, centers.map(() => 20));
+    for (let i = 0; i < centers.length; i++)
+      for (let j = i + 1; j < centers.length; j++)
+        expect(overlaps(centers[i], halves[i], centers[j], halves[j])).toBe(false);
   });
 });
 
