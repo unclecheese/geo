@@ -270,7 +270,10 @@ export const useQuizStore = create<QuizState>((set, get) => ({
 
     // Easy difficulty turns name/capital/flag into multiple choice; difficult
     // (and find, which is always map-clicked) stays typed → choices stays [].
-    const difficulty = useAtlasStore.getState().settings.quizDifficulty;
+    // quizDifficultyOverride (session-scoped, never persisted) wins when set —
+    // see atlas-store.ts.
+    const atlas = useAtlasStore.getState();
+    const difficulty = atlas.quizDifficultyOverride ?? atlas.settings.quizDifficulty;
     const choices =
       MC_MODES.includes(chosenMode) && difficulty === "easy"
         ? Logic.makeChoices(item, cand, 4)

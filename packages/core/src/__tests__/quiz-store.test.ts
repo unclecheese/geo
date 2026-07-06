@@ -5,6 +5,7 @@ import { setKVStorage } from "../platform";
 import { setMapPort, type MapPort } from "../ports";
 import { DataLayer } from "../data-layer";
 import { memoryKV } from "./platform.test";
+import { STATE_KEY } from "../constants";
 import type { Country, ModeId } from "../types";
 import type { QuizSession } from "../stores/quiz-store";
 
@@ -190,5 +191,41 @@ describe("quiz-store: MapPort integration", () => {
     expect(calls).toContain("frame:380");
     expect(calls).toContain("paint:380:target");
     expect(calls).toContain("arrow:380");
+  });
+});
+
+describe("quiz-store: quizDifficultyOverride", () => {
+  it("MC-vs-typed branch consults the session-scoped override ahead of settings.quizDifficulty", () => {
+    const prevCountries = DataLayer.countries;
+    // Only candidate with map geometry, so a real next() deterministically
+    // targets it in name mode (mirrors the MapPort integration test above).
+    DataLayer.countries = [{ ...ITALY, feature: {} } as unknown as Country];
+    useAtlasStore.getState().setSettings({ modes: ["name"] as ModeId[], regions: [], quizDifficulty: "difficult" });
+
+    useAtlasStore.getState().setQuizDifficultyOverride("easy");
+    useQuizStore.getState().start();
+
+    DataLayer.countries = prevCountries;
+    useAtlasStore.getState().setQuizDifficultyOverride(null);
+
+    // settings.quizDifficulty is "difficult" (would otherwise leave choices
+    // empty/typed), but the override forces multiple choice for this session.
+    expect(useQuizStore.getState().choices.length).toBeGreaterThan(0);
+  });
+
+  it("does not persist the override — the injected KVStorage blob never contains it", async () => {
+    const kv = memoryKV();
+    setKVStorage(kv);
+    await useAtlasStore.persist.rehydrate();
+    useAtlasStore.getState().setSettings({ quizDifficulty: "difficult" });
+    useAtlasStore.getState().setQuizDifficultyOverride("easy");
+    await new Promise((r) => setTimeout(r, 0)); // let async setItem flush
+    const raw = kv.data.get(STATE_KEY);
+    expect(raw).toBeTruthy();
+    const persisted = JSON.parse(raw!).state;
+    expect(persisted.quizDifficultyOverride).toBeUndefined();
+    // The override must never leak into (or overwrite) the persisted preference.
+    expect(persisted.settings.quizDifficulty).toBe("difficult");
+    useAtlasStore.getState().setQuizDifficultyOverride(null);
   });
 });

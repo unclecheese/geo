@@ -72,14 +72,12 @@ export function MenuScreen() {
     if (set.has(id)) set.delete(id);
     else set.add(id);
     const nextModes = set.size ? [...set] : [id];
-    // TODO(16): force easy when switching onto a map mode — difficult name
-    // mode isn't built yet, so don't leave a stale difficult selection that
-    // MapQuizScreen can't answer (see difficultDisabled below).
-    const patch: Partial<typeof settings> =
-      MODES[id].group === "map" && settings.quizDifficulty === "difficult"
-        ? { modes: nextModes, quizDifficulty: "easy" }
-        : { modes: nextModes };
-    setSettings(patch);
+    // TODO(16): map difficult (hangman) isn't built yet, so a map session must
+    // never start in difficult — MapQuizScreen forces a session-scoped
+    // quizDifficultyOverride instead of mutating (and persisting) this
+    // setting. Don't reintroduce a quizDifficulty write here (see
+    // difficultDisabled below for the input-side gate).
+    setSettings({ modes: nextModes });
   };
 
   // Region multi-select. Empty = whole world (every chip reads on). Narrowing

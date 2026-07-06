@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import { Logic } from "../logic";
 import { STATE_KEY, STATE_VERSION } from "../constants";
-import type { AtlasState, HistoryEntry, ModeId, Settings } from "../types";
+import type { AtlasState, HistoryEntry, ModeId, QuizDifficulty, Settings } from "../types";
 import { getKVStorage } from "../platform";
 
 export function defaultState(): AtlasState {
@@ -102,6 +102,12 @@ export interface AtlasStore extends AtlasState {
   _hasHydrated: boolean;
   setHasHydrated: (v: boolean) => void;
   setSettings: (patch: Partial<Settings>) => void;
+  // Session-scoped difficulty override, consulted ahead of settings.quizDifficulty
+  // by quiz-store's next(). Deliberately transient — excluded from `partialize`
+  // below — so a caller (e.g. TV's map screen) can force a difficulty for the
+  // life of a session without touching the player's persisted preference.
+  quizDifficultyOverride: QuizDifficulty | null;
+  setQuizDifficultyOverride: (v: QuizDifficulty | null) => void;
   recordVerdict: (v: VerdictInput) => void;
   recordBestStreak: (n: number) => void;
   resetProgress: () => void;
@@ -118,6 +124,9 @@ export const useAtlasStore = create<AtlasStore>()(
 
       setSettings: (patch) =>
         set((s) => ({ settings: { ...s.settings, ...patch } })),
+
+      quizDifficultyOverride: null,
+      setQuizDifficultyOverride: (v) => set({ quizDifficultyOverride: v }),
 
       // Fold one outcome into Leitner + history + stats under "id:mode" — the
       // shared core of the old Quiz grading and Build._recordVerdict.
