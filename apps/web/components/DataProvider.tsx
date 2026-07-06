@@ -30,6 +30,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     startedRef.current = true;
     let cancelled = false;
     registerWebPlatform();
+    import("@/lib/ports-web").then((m) => m.registerWebPorts());
     if (!loadPromise) loadPromise = DataLayer.load((m) => setStatus(m));
     loadPromise
       .then(() => {

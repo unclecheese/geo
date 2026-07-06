@@ -1,20 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-
-// Isolate the store from browser-only deps. useAtlasStore et al. from the same
-// module must stay real, so patch just `toast` in.
-vi.mock("@geobean/core", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@geobean/core")>()),
-  toast: vi.fn(),
-}));
-vi.mock("@/lib/fx", () => ({
-  Audio2: { correct: vi.fn(), wrong: vi.fn(), milestone: vi.fn(), ensure: vi.fn() },
-  Confetti: { burst: vi.fn() },
-}));
-
-import { useBordersStore } from "@/store/borders-store";
-import { useAtlasStore } from "@geobean/core";
-import type { Country } from "@geobean/core";
-import type { QuizSession } from "@/store/quiz-store";
+import { describe, it, expect, beforeEach } from "vitest";
+import { useBordersStore } from "../stores/borders-store";
+import { useAtlasStore } from "../stores/atlas-store";
+import { setKVStorage } from "../platform";
+import { memoryKV } from "./platform.test";
+import type { Country } from "../types";
+import type { QuizSession } from "../stores/quiz-store";
 
 const mk = (id: string, name: string): Country =>
   ({ id, name, region: "Europe", neighbours: [], feature: {}, centroid: [0, 0] } as unknown as Country);
@@ -42,7 +32,9 @@ const seed = (over: Partial<ReturnType<typeof useBordersStore.getState>> = {}) =
     ...over,
   });
 
-beforeEach(() => {
+beforeEach(async () => {
+  setKVStorage(memoryKV());
+  await useAtlasStore.persist.rehydrate();
   useAtlasStore.setState({ leitner: {}, history: [], stats: { answered: 0, correct: 0, bestStreak: 0, streakHistory: [] } });
 });
 

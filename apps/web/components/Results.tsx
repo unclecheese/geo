@@ -1,7 +1,6 @@
 "use client";
 
-import { Logic } from "@geobean/core";
-import type { QuizSession } from "@/store/quiz-store";
+import { Logic, type QuizSession } from "@geobean/core";
 
 interface ResultsProps {
   session: QuizSession | null; // non-null when the round-complete modal is open

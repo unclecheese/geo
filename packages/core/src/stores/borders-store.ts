@@ -1,7 +1,11 @@
 import { create } from "zustand";
-import { Logic, DataLayer, useAtlasStore, toast, type Country } from "@geobean/core";
-import { Audio2, Confetti } from "@/lib/fx";
-import type { QuizSession } from "@/store/quiz-store";
+import { Logic } from "../logic";
+import { DataLayer } from "../data-layer";
+import { useAtlasStore } from "./atlas-store";
+import { toast } from "./toast-store";
+import type { Country } from "../types";
+import { fx } from "../ports";
+import type { QuizSession } from "./quiz-store";
 
 // "Borders" quiz: a target country is shown in a static framed picture with its
 // land neighbours numbered around it (see components/FrameView). The player
@@ -138,7 +142,7 @@ export const useBordersStore = create<BordersState>((set, get) => ({
       const t = state._timerId;
       if (t) clearInterval(t);
       session.elapsedMs = session.startTime ? now() - session.startTime : session.elapsedMs;
-      Confetti.burst();
+      fx().confetti();
       set({ active: false, finished: true, session: { ...session }, target: null, reveal: null, _timerId: null });
       return;
     }
@@ -233,17 +237,17 @@ export const useBordersStore = create<BordersState>((set, get) => ({
       s.streak += 1;
       s.score += 100 + Math.min(60, s.streak * 6);
       s.bestStreak = Math.max(s.bestStreak, s.streak);
-      Audio2.correct();
+      fx().correct();
       if (s.streak > 0 && s.streak % 5 === 0) {
-        Confetti.burst();
-        Audio2.milestone();
+        fx().confetti();
+        fx().milestone();
         toast("🔥 " + s.streak + " in a row!", "good");
       } else {
         toast(`All ${shown.length} neighbours of ${target.name}!`, "good");
       }
     } else {
       s.streak = 0;
-      Audio2.wrong();
+      fx().wrong();
       const got = results.filter((r) => r.ok).length;
       toast(`${got} / ${shown.length} — that's ${target.name}.`, "bad");
     }

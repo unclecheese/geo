@@ -1,15 +1,11 @@
 import { create } from "zustand";
-import {
-  Logic,
-  MODES,
-  DataLayer,
-  useAtlasStore,
-  toast,
-  type Country,
-  type ModeId,
-  type ModeGroup,
-} from "@geobean/core";
-import { Audio2, Confetti } from "@/lib/fx";
+import { Logic } from "../logic";
+import { MODES } from "../modes";
+import { DataLayer } from "../data-layer";
+import type { Country, ModeId, ModeGroup } from "../types";
+import { useAtlasStore } from "./atlas-store";
+import { toast } from "./toast-store";
+import { mapPort, fx } from "../ports";
 
 // Modes that belong to each screen.
 const MAP_MODES: ModeId[] = ["find", "name"];
@@ -223,10 +219,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
 
     // Clear map highlights at the start of each question in map mode.
     if (session.screen === "map") {
-      // Import is deferred to avoid a circular dep at module load time.
-      import("@/lib/map-view").then(({ MapView }) => {
-        if (MapView._inited) MapView.clearHighlights();
-      });
+      mapPort()?.clearHighlights();
     }
 
     if (session.asked >= session.total) {
@@ -296,25 +289,25 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       revealedCount: 0,
     });
 
-    // Map framing for tiny countries (deferred import to avoid circular dep).
+    // Map framing for tiny countries.
     if (chosenMode === "find" || chosenMode === "name") {
-      import("@/lib/map-view").then(({ MapView }) => {
-        if (!MapView._inited) return;
+      const map = mapPort();
+      if (map) {
         if (chosenMode === "name") {
           // Name mode highlights the target, so the answer is already shown.
           // Frame tiny countries and drop an arrow so they're easy to spot.
-          if (MapView.tinyIds.has(item!.id)) MapView.frameCountry(item!, 0.5);
-          else MapView.reset();
-          MapView.paint(item!.id, "target");
-          MapView.markArrow(item!);
+          if (map.tinyIds.has(item.id)) map.frameCountry(item, 0.5);
+          else map.reset();
+          map.paint(item.id, "target");
+          map.markArrow(item);
         } else {
           // Find mode: the player must locate the country themselves, so never
           // auto-zoom to it — that would reveal the answer. Just reset any zoom
           // left over from the previous question; they double-click to zoom in
           // and hunt for small countries.
-          MapView.reset();
+          map.reset();
         }
-      });
+      }
     }
   },
 
@@ -332,31 +325,27 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     const state = get();
     // Not an active unanswered map question → show quick info only.
     if (!state.active || state.answered || !state.current) {
-      import("@/lib/map-view").then(({ MapView }) => {
-        if (MapView._inited) MapView.flashSelect(country.id);
-      });
+      mapPort()?.flashSelect(country.id);
       toast(`${country.name} — capital ${country.capital}`);
       return;
     }
     const { mode, item } = state.current;
     if (MODES[mode]?.group !== "map") {
       // Wrong screen/mode — treat as quick-info.
-      import("@/lib/map-view").then(({ MapView }) => {
-        if (MapView._inited) MapView.flashSelect(country.id);
-      });
+      mapPort()?.flashSelect(country.id);
       toast(`${country.name} — capital ${country.capital}`);
       return;
     }
     if (mode === "find") {
       const correct = country.id === item.id;
-      import("@/lib/map-view").then(({ MapView }) => {
-        if (!MapView._inited) return;
-        MapView.paint(country.id, correct ? "good" : "bad");
+      const map = mapPort();
+      if (map) {
+        map.paint(country.id, correct ? "good" : "bad");
         if (!correct) {
-          MapView.paint(item.id, "target");
-          MapView.markArrow(item); // point out where it actually was
+          map.paint(item.id, "target");
+          map.markArrow(item); // point out where it actually was
         }
-      });
+      }
       get().grade(correct);
     }
     // "name" is answered via MC choices, not map clicks.
@@ -372,9 +361,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     set({ choiceResult: { pickedId: chosen.id, correctId: item.id } });
     // Only name mode lives on the map, so it's the only one to paint.
     if (MODES[mode]?.group === "map") {
-      import("@/lib/map-view").then(({ MapView }) => {
-        if (MapView._inited) MapView.paint(item.id, correct ? "good" : "target");
-      });
+      mapPort()?.paint(item.id, correct ? "good" : "target");
     }
     get().grade(correct);
   },
@@ -388,7 +375,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       // Location clues escalate: region → subregion → border countries.
       if (state.hintLevel >= 3) return;
       set({ hintLevel: state.hintLevel + 1 });
-      Audio2.hint();
+      fx().hint();
       return;
     }
 
@@ -397,7 +384,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       const id = Logic.nextEliminate(state.choices, item.id, state.eliminatedIds);
       if (!id) return;
       set({ eliminatedIds: [...state.eliminatedIds, id] });
-      Audio2.hint();
+      fx().hint();
       return;
     }
 
@@ -409,7 +396,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     const maxReveal = Logic.letterCount(answer) + 1;
     if (state.revealedCount >= maxReveal) return;
     set({ revealedCount: state.revealedCount + 1 });
-    Audio2.hint();
+    fx().hint();
   },
 
   grade: (correct, extra = {}) => {
@@ -426,16 +413,16 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       pts += Math.min(60, session.streak * 6);
       session.score += pts;
       session.bestStreak = Math.max(session.bestStreak, session.streak);
-      Audio2.correct();
+      fx().correct();
       toast(praise(), "good");
       if (session.streak > 0 && session.streak % 5 === 0) {
-        Confetti.burst();
-        Audio2.milestone();
+        fx().confetti();
+        fx().milestone();
         toast("🔥 " + session.streak + " in a row!", "good");
       }
     } else {
       session.streak = 0;
-      Audio2.wrong();
+      fx().wrong();
       toast("Not quite — it's " + item.name, "bad");
     }
 
@@ -445,9 +432,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
 
     // Refresh heatmap on map screen if it's on.
     if (session.screen === "map" && atlas.settings.heatmap) {
-      import("@/lib/map-view").then(({ MapView }) => {
-        if (MapView._inited) MapView.refreshColors();
-      });
+      mapPort()?.refreshColors();
     }
 
     set({
@@ -473,16 +458,15 @@ export const useQuizStore = create<QuizState>((set, get) => ({
 
     // Clear map on finish.
     if (session?.screen === "map") {
-      import("@/lib/map-view").then(({ MapView }) => {
-        if (MapView._inited) {
-          MapView.clearHighlights();
-          MapView.reset();
-        }
-      });
+      const map = mapPort();
+      if (map) {
+        map.clearHighlights();
+        map.reset();
+      }
     }
 
     if (session && (session.type === "round" || session.type === "around")) {
-      Confetti.burst();
+      fx().confetti();
       set({ active: false, finished: true, session, current: null, reveal: null, _timerId: null });
     } else {
       if (session) toast("Session ended in " + Logic.fmtDuration(session.elapsedMs), "good");
@@ -496,9 +480,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     // Clear map highlights on quit.
     const session = get().session;
     if (session?.screen === "map") {
-      import("@/lib/map-view").then(({ MapView }) => {
-        if (MapView._inited) MapView.clearHighlights();
-      });
+      mapPort()?.clearHighlights();
     }
     set({
       active: false,

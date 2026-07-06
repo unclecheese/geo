@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MODES, Logic, DataLayer, useAtlasStore } from "@geobean/core";
-import { useQuizStore } from "@/store/quiz-store";
+import { MODES, Logic, DataLayer, useAtlasStore, useQuizStore } from "@geobean/core";
 import { useData } from "@/components/DataProvider";
 import { Autocomplete } from "@/components/Autocomplete";
 import { Choices } from "@/components/Choices";

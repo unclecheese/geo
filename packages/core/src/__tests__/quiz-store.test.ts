@@ -1,22 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-
-// MapView is browser-only; stub it so the deferred imports no-op (gated on _inited).
-vi.mock("@/lib/map-view", () => ({ MapView: { _inited: false } }));
-// Silence toast + fx so grading doesn't reach into the DOM/audio. useAtlasStore
-// et al. from the same module must stay real, so patch just `toast` in.
-vi.mock("@geobean/core", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@geobean/core")>()),
-  toast: vi.fn(),
-}));
-vi.mock("@/lib/fx", () => ({
-  Audio2: { correct: vi.fn(), wrong: vi.fn(), milestone: vi.fn(), hint: vi.fn() },
-  Confetti: { burst: vi.fn() },
-}));
-
-import { useQuizStore } from "@/store/quiz-store";
-import { useAtlasStore } from "@geobean/core";
-import type { Country, ModeId } from "@geobean/core";
-import type { QuizSession } from "@/store/quiz-store";
+import { describe, it, expect, beforeEach } from "vitest";
+import { useQuizStore } from "../stores/quiz-store";
+import { useAtlasStore } from "../stores/atlas-store";
+import { setKVStorage } from "../platform";
+import { setMapPort, type MapPort } from "../ports";
+import { DataLayer } from "../data-layer";
+import { memoryKV } from "./platform.test";
+import type { Country, ModeId } from "../types";
+import type { QuizSession } from "../stores/quiz-store";
 
 const mk = (id: string, name: string, capital: string): Country =>
   ({ id, name, capital, region: "Europe", subregion: "Southern Europe", neighbours: [] } as unknown as Country);
@@ -60,8 +50,12 @@ const seed = (mode: ModeId, over: Partial<ReturnType<typeof useQuizStore.getStat
     ...over,
   });
 
-beforeEach(() => {
+beforeEach(async () => {
+  setKVStorage(memoryKV());
+  await useAtlasStore.persist.rehydrate();
   useAtlasStore.getState().resetProgress();
+  // No MapPort by default — most grading tests run map-free (expert modes).
+  setMapPort(null);
 });
 
 describe("quiz-store: multiple-choice grading (easy)", () => {
@@ -154,5 +148,47 @@ describe("quiz-store: hints", () => {
     for (let i = 0; i < 20; i++) useHint();
     // "Rome" has 4 letters; caps at letterCount + 1 (the all-blank mask step).
     expect(useQuizStore.getState().revealedCount).toBe(5);
+  });
+});
+
+describe("quiz-store: MapPort integration", () => {
+  it("runs a find question safely with no MapPort registered", () => {
+    setMapPort(null);
+    seed("find");
+    expect(() => useQuizStore.getState().handleMapSelect(ITALY)).not.toThrow();
+    const s = useQuizStore.getState();
+    expect(s.answered).toBe(true);
+    expect(s.reveal?.correct).toBe(true);
+  });
+
+  it("frames tiny countries through the MapPort in name mode", () => {
+    const calls: string[] = [];
+    const fake: MapPort = {
+      isReady: () => true,
+      tinyIds: new Set(["380"]),
+      clearHighlights() { calls.push("clear"); },
+      flashSelect() {},
+      frameCountry: (c) => calls.push("frame:" + c.id),
+      markArrow: (c) => calls.push("arrow:" + c.id),
+      paint: (id, kind) => calls.push(`paint:${id}:${kind}`),
+      refreshColors() {},
+      reset: () => calls.push("reset"),
+    };
+    setMapPort(fake);
+
+    // Only candidate with map geometry is ITALY (id "380", the registered tiny
+    // id), so a real next() deterministically targets it in name mode.
+    const prevCountries = DataLayer.countries;
+    DataLayer.countries = [{ ...ITALY, feature: {} } as unknown as Country];
+    useAtlasStore.getState().setSettings({ modes: ["name"] as ModeId[], regions: [] });
+
+    useQuizStore.getState().start();
+
+    DataLayer.countries = prevCountries;
+
+    expect(useQuizStore.getState().current).toEqual({ item: expect.objectContaining({ id: "380" }), mode: "name" });
+    expect(calls).toContain("frame:380");
+    expect(calls).toContain("paint:380:target");
+    expect(calls).toContain("arrow:380");
   });
 });

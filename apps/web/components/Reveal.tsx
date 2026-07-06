@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { DataLayer } from "@geobean/core";
-import type { RevealState } from "@/store/quiz-store";
+import { DataLayer, type RevealState } from "@geobean/core";
 
 interface RevealProps {
   reveal: RevealState | null;

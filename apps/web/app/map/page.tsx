@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePinchGuard } from "@/lib/use-pinch-guard";
-import { MODES, Logic, DataLayer, useAtlasStore } from "@geobean/core";
-import { useQuizStore } from "@/store/quiz-store";
+import { MODES, Logic, DataLayer, useAtlasStore, useQuizStore } from "@geobean/core";
 import { useData } from "@/components/DataProvider";
 import { MapViewComponent } from "@/components/MapView";
 import { Scorebar } from "@/components/Scorebar";
