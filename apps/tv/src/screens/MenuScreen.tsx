@@ -71,7 +71,15 @@ export function MenuScreen() {
     );
     if (set.has(id)) set.delete(id);
     else set.add(id);
-    setSettings({ modes: set.size ? [...set] : [id] });
+    const nextModes = set.size ? [...set] : [id];
+    // TODO(16): force easy when switching onto a map mode — difficult name
+    // mode isn't built yet, so don't leave a stale difficult selection that
+    // MapQuizScreen can't answer (see difficultDisabled below).
+    const patch: Partial<typeof settings> =
+      MODES[id].group === "map" && settings.quizDifficulty === "difficult"
+        ? { modes: nextModes, quizDifficulty: "easy" }
+        : { modes: nextModes };
+    setSettings(patch);
   };
 
   // Region multi-select. Empty = whole world (every chip reads on). Narrowing
@@ -91,6 +99,13 @@ export function MenuScreen() {
   };
 
   const setQuizDifficulty = (d: QuizDifficulty) => setSettings({ quizDifficulty: d });
+
+  // TODO(16): difficult name mode (typed/hangman) isn't built yet on TV — only
+  // easy (multiple-choice) works for map modes until Task 16 lands the typed
+  // path. Gate the chip off while the selection is map-group so a player can't
+  // pick a combination MapQuizScreen can't yet answer.
+  const mapModeSelected = settings.modes.some((m) => MODES[m]?.group === "map");
+  const difficultDisabled = hydrated && mapModeSelected;
 
   // Normalise the mode set to the family's canonical selection, then navigate.
   const startMap = () => {
@@ -154,9 +169,13 @@ export function MenuScreen() {
             label="Difficult"
             active={hydrated && settings.quizDifficulty === "difficult"}
             onPress={() => setQuizDifficulty("difficult")}
+            disabled={difficultDisabled}
           />
         </View>
-        <Text style={styles.hint}>Easy = multiple choice. Difficult = type the answer.</Text>
+        <Text style={styles.hint}>
+          Easy = multiple choice. Difficult = type the answer.
+          {difficultDisabled ? " (Difficult isn't available for map modes yet.)" : ""}
+        </Text>
       </Section>
 
       <Section title="Length">
@@ -202,23 +221,31 @@ function Chip({
   active,
   onPress,
   preferred,
+  disabled,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
   preferred?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       hasTVPreferredFocus={preferred}
       style={(state: PressableStateCallbackType) => [
         styles.chip,
         active && styles.chipActive,
         state.focused && styles.chipFocused,
+        disabled && styles.chipDisabled,
       ]}
     >
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+      <Text
+        style={[styles.chipText, active && styles.chipTextActive, disabled && styles.chipTextDisabled]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -264,6 +291,8 @@ const styles = StyleSheet.create({
   chipFocused: { borderColor: theme.brass, transform: [{ scale: 1.08 }] },
   chipText: { color: theme.inkDim, fontSize: 22, fontWeight: "600" },
   chipTextActive: { color: theme.ink },
+  chipDisabled: { opacity: 0.4 },
+  chipTextDisabled: { color: theme.inkFaint },
   hint: { color: theme.creamDim, fontSize: 16, marginTop: 10, fontStyle: "italic" },
   start: {
     backgroundColor: theme.brass,

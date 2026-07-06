@@ -10,6 +10,7 @@ import { useRemoteInput } from "../input/useRemoteInput";
 import { Scorebar } from "../components/Scorebar";
 import { HintPanel } from "../components/HintPanel";
 import { RevealCard } from "../components/RevealCard";
+import { ChoicesGrid } from "../components/ChoicesGrid";
 import { theme } from "../theme";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -31,7 +32,9 @@ const CURSOR_START = { x: 960, y: 540 };
  * Input-mode machine (single source): the remote is a CURSOR only during an
  * unanswered find question; every other state (reveal up, name mode, finished)
  * is FOCUS so the native focus engine owns Select/dpad and can drive the
- * reveal's buttons.
+ * reveal's buttons and the name-mode choices grid. Play/Pause always maps to
+ * `useHint()` via `useRemoteInput`'s unconditional playPause branch — that one
+ * registration covers find and name alike, so no second handler is wired here.
  */
 export function MapQuizScreen() {
   const nav = useNavigation<Nav>();
@@ -65,6 +68,9 @@ export function MapQuizScreen() {
   const reveal = useQuizStore((s) => s.reveal);
   const current = useQuizStore((s) => s.current);
   const hintLevel = useQuizStore((s) => s.hintLevel);
+  const choices = useQuizStore((s) => s.choices);
+  const choiceResult = useQuizStore((s) => s.choiceResult);
+  const eliminatedIds = useQuizStore((s) => s.eliminatedIds);
 
   const cursorMode = mode === "find" && !answered;
 
@@ -93,7 +99,7 @@ export function MapQuizScreen() {
     onPlayPause: () => useQuizStore.getState().useHint(),
   });
 
-  // Round over → Results (Task 14 finishes that screen).
+  // Round over → Results.
   useEffect(() => {
     if (finished) nav.navigate("Results");
   }, [finished, nav]);
@@ -114,10 +120,27 @@ export function MapQuizScreen() {
         </View>
       )}
 
+      {current?.mode === "name" && !answered && (
+        <View style={styles.prompt} pointerEvents="none">
+          <Text style={styles.promptLabel}>Name the highlighted country</Text>
+        </View>
+      )}
+
       <Scorebar />
 
       {current?.mode === "find" && !answered && (
         <HintPanel item={current.item} hintLevel={hintLevel} />
+      )}
+
+      {current?.mode === "name" && choices.length > 0 && (
+        <View style={styles.choicesBand} pointerEvents={answered ? "none" : "box-none"}>
+          <ChoicesGrid
+            choices={choices}
+            choiceResult={choiceResult}
+            eliminatedIds={eliminatedIds}
+            onChoose={(c) => useQuizStore.getState().handleChoice(c)}
+          />
+        </View>
       )}
 
       {answered && reveal && (
@@ -155,4 +178,12 @@ const styles = StyleSheet.create({
     fontVariant: ["small-caps"],
   },
   promptName: { color: theme.cream, fontSize: 40, fontFamily: "Georgia", fontWeight: "700" },
+  choicesBand: {
+    position: "absolute",
+    bottom: 48,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 20,
+  },
 });
