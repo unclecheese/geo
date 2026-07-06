@@ -1,6 +1,6 @@
 "use client";
 
-import { Logic } from "@/lib/logic";
+import { Logic } from "@geobean/core";
 import type { QuizSession } from "@/store/quiz-store";
 
 interface ResultsProps {

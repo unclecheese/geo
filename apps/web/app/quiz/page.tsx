@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MODES } from "@/lib/modes";
+import { MODES, Logic } from "@geobean/core";
 import { DataLayer } from "@/lib/data-layer";
-import { Logic } from "@/lib/logic";
 import { useAtlasStore } from "@/store/atlas-store";
 import { useQuizStore } from "@/store/quiz-store";
 import { useData } from "@/components/DataProvider";

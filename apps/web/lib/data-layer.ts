@@ -1,9 +1,7 @@
 import { geoArea, geoCentroid } from "d3";
 import { feature } from "topojson-client";
 import type { Feature, Polygon, Position } from "geojson";
-import { DATA_KEY, REST_URL, TOPO_URL } from "./constants";
-import { EXTRA_SOVEREIGN } from "./modes";
-import type { Country } from "./types";
+import { DATA_KEY, REST_URL, TOPO_URL, EXTRA_SOVEREIGN, type Country } from "@geobean/core";
 
 // The mledoze/countries record shape, loosely typed to what we read.
 interface RawMeta {

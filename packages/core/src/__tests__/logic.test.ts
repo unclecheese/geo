@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { Logic } from "@/lib/logic";
-import type { Country, LeitnerEntry, ModeId } from "@/lib/types";
+import { Logic } from "../logic";
+import type { Country, LeitnerEntry, ModeId } from "../types";
 
 function mk(id: string, region: string, opts: Partial<Country> = {}): Country {
   return { id, name: id, cca3: id, region, subregion: region, neighbours: [], ...opts };

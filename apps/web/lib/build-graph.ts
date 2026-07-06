@@ -1,4 +1,4 @@
-import type { Country } from "./types";
+import type { Country } from "@geobean/core";
 
 export interface BuildModel {
   continent: string;

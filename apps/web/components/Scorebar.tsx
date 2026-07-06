@@ -1,6 +1,6 @@
 "use client";
 
-import { Logic } from "@/lib/logic";
+import { Logic } from "@geobean/core";
 import { useAtlasStore } from "@/store/atlas-store";
 import { useQuizStore } from "@/store/quiz-store";
 

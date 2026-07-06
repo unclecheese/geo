@@ -1,7 +1,7 @@
 "use client";
 
 import type { BuildDoneSummary } from "@/store/build-store";
-import { Logic } from "@/lib/logic";
+import { Logic } from "@geobean/core";
 
 interface Props {
   done: BuildDoneSummary | null;

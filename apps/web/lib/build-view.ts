@@ -15,12 +15,18 @@ import {
 import type { Selection, ZoomBehavior, ZoomTransform } from "d3";
 import { merge as topoMerge } from "topojson-client";
 import { DataLayer } from "@/lib/data-layer";
-import { Logic } from "@/lib/logic";
+import {
+  Logic,
+  Placement,
+  europeanRussia,
+  ukraineWithCrimea,
+  crimeaPolygon,
+  RU_CCN3,
+  UA_CCN3,
+  type Country,
+} from "@geobean/core";
 import { Audio2 } from "@/lib/fx";
-import { Placement } from "@/lib/placement";
-import { europeanRussia, ukraineWithCrimea, crimeaPolygon, RU_CCN3, UA_CCN3 } from "@/lib/ru-fix";
 import { useAtlasStore } from "@/store/atlas-store";
-import type { Country } from "@/lib/types";
 import type { Feature, FeatureCollection } from "geojson";
 
 type SVGSel = Selection<SVGSVGElement, unknown, null, undefined>;

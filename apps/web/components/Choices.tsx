@@ -1,6 +1,6 @@
 "use client";
 
-import type { Country } from "@/lib/types";
+import type { Country } from "@geobean/core";
 import type { ChoiceResult } from "@/store/quiz-store";
 
 interface ChoicesProps {

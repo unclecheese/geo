@@ -1,10 +1,9 @@
 import { create } from "zustand";
-import { Logic } from "@/lib/logic";
+import { Logic, type Country } from "@geobean/core";
 import { DataLayer } from "@/lib/data-layer";
 import { Audio2, Confetti } from "@/lib/fx";
 import { useAtlasStore } from "@/store/atlas-store";
 import { toast } from "@/store/toast-store";
-import type { Country } from "@/lib/types";
 import type { QuizSession } from "@/store/quiz-store";
 
 // "Borders" quiz: a target country is shown in a static framed picture with its

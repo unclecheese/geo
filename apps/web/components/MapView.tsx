@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { MapView } from "@/lib/map-view";
 import { useAtlasStore } from "@/store/atlas-store";
-import type { Country } from "@/lib/types";
+import type { Country } from "@geobean/core";
 
 interface MapViewComponentProps {
   // Click handler for a country/marker. Each screen wires its own (map quiz vs

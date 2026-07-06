@@ -5,7 +5,7 @@ import {
   crimeaPolygon,
   europeanRussia,
   ukraineWithCrimea,
-} from "@/lib/ru-fix";
+} from "../ru-fix";
 import type { Feature } from "geojson";
 
 describe("unwrapAntimeridian", () => {

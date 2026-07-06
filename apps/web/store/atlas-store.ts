@@ -1,8 +1,14 @@
 import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import { Logic } from "@/lib/logic";
-import { STATE_KEY, STATE_VERSION } from "@/lib/constants";
-import type { AtlasState, HistoryEntry, ModeId, Settings } from "@/lib/types";
+import {
+  Logic,
+  STATE_KEY,
+  STATE_VERSION,
+  type AtlasState,
+  type HistoryEntry,
+  type ModeId,
+  type Settings,
+} from "@geobean/core";
 
 export function defaultState(): AtlasState {
   return {

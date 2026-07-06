@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Logic } from "@/lib/logic";
+import { Logic } from "@geobean/core";
 
 interface AutocompleteProps {
   candidates: string[];

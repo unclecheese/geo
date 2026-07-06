@@ -1,6 +1,6 @@
 "use client";
 
-import { BOX_COLORS } from "@/lib/constants";
+import { BOX_COLORS } from "@geobean/core";
 import { DataLayer } from "@/lib/data-layer";
 import { useAtlasStore } from "@/store/atlas-store";
 import { Sparkline } from "@/components/Sparkline";

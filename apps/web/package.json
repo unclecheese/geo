@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@geobean/core": "*",
     "d3": "^7.9.0",
     "next": "^15.1.0",
     "react": "^19.0.0",

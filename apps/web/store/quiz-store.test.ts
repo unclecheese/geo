@@ -11,8 +11,7 @@ vi.mock("@/lib/fx", () => ({
 
 import { useQuizStore } from "@/store/quiz-store";
 import { useAtlasStore } from "@/store/atlas-store";
-import type { Country } from "@/lib/types";
-import type { ModeId } from "@/lib/types";
+import type { Country, ModeId } from "@geobean/core";
 import type { QuizSession } from "@/store/quiz-store";
 
 const mk = (id: string, name: string, capital: string): Country =>

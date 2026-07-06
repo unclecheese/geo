@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Placement, type Poly } from "@/lib/placement";
+import { Placement, type Poly } from "../placement";
 
 // A 10×10 square with its lower-left corner at (x, y).
 function square(x: number, y: number, s = 10): Poly {

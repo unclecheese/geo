@@ -2,11 +2,16 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MODES } from "@/lib/modes";
-import { Logic } from "@/lib/logic";
+import {
+  MODES,
+  Logic,
+  type BuildDifficulty,
+  type ModeGroup,
+  type ModeId,
+  type QuizDifficulty,
+} from "@geobean/core";
 import { DataLayer } from "@/lib/data-layer";
 import { BuildGraph } from "@/lib/build-graph";
-import type { BuildDifficulty, ModeGroup, ModeId, QuizDifficulty } from "@/lib/types";
 import { useAtlasStore } from "@/store/atlas-store";
 import { useHydrated } from "@/lib/use-hydrated";
 import { useData } from "@/components/DataProvider";

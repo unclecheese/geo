@@ -12,11 +12,8 @@ import {
 } from "d3";
 import type { Selection, ZoomBehavior } from "d3";
 import { DataLayer } from "@/lib/data-layer";
-import { Logic } from "@/lib/logic";
-import { MODES } from "@/lib/modes";
-import { BOX_COLORS } from "@/lib/constants";
+import { Logic, MODES, BOX_COLORS, type Country } from "@geobean/core";
 import { useAtlasStore } from "@/store/atlas-store";
-import type { Country } from "@/lib/types";
 import type { Feature, Polygon } from "geojson";
 
 // The projected area (px²) and bounding box of a feature's largest polygon —

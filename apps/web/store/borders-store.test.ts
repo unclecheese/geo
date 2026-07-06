@@ -9,7 +9,7 @@ vi.mock("@/lib/fx", () => ({
 
 import { useBordersStore } from "@/store/borders-store";
 import { useAtlasStore } from "@/store/atlas-store";
-import type { Country } from "@/lib/types";
+import type { Country } from "@geobean/core";
 import type { QuizSession } from "@/store/quiz-store";
 
 const mk = (id: string, name: string): Country =>

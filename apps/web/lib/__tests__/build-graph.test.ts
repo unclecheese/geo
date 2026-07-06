@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { BuildGraph } from "@/lib/build-graph";
-import type { Country } from "@/lib/types";
+import type { Country } from "@geobean/core";
 
 function mk(id: string, region: string, opts: Partial<Country> = {}): Country {
   return { id, name: id, cca3: id, region, neighbours: [], feature: {} as Country["feature"], ...opts };

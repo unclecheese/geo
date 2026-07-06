@@ -1,11 +1,10 @@
 import { create } from "zustand";
 import { BuildGraph } from "@/lib/build-graph";
 import { DataLayer } from "@/lib/data-layer";
-import { Logic } from "@/lib/logic";
+import { Logic, type Country } from "@geobean/core";
 import { Audio2, Confetti } from "@/lib/fx";
 import { useAtlasStore } from "@/store/atlas-store";
 import { toast } from "@/store/toast-store";
-import type { Country } from "@/lib/types";
 import type { BuildModel as ViewBuildModel } from "@/lib/build-view";
 
 export interface BuildSession {
