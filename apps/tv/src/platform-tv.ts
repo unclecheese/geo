@@ -1,3 +1,8 @@
+// async-storage is pinned to 2.2.0 in package.json ON PURPOSE. 3.x dropped tvOS
+// from its podspec (no `:tvos` platform, iOS-only xcframework), so the native
+// module resolves to null at runtime on tvOS and ALL persistence silently fails
+// ("Native module is null"). This breaks nothing tsc/vitest can see. Do not bump
+// past 2.x without confirming tvOS support is restored in the release.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setKVStorage, useAtlasStore } from "@geobean/core";
 
