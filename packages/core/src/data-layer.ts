@@ -63,6 +63,11 @@ export function largestPolygonCentroid(feature: Feature): [number, number] {
   return geoCentroid(feature) as [number, number];
 }
 
+/** flagcdn PNG — RN's Image can't rasterise the SVG endpoints web uses. */
+export function flagPng(c: Country, width: 320 | 640 = 640): string {
+  return c.cca2 ? `https://flagcdn.com/w${width}/${c.cca2.toLowerCase()}.png` : "";
+}
+
 /**
  * Fetch + join TopoJSON geometry with mledoze country metadata, cache it via
  * the platform's KVStorage, and retain the raw topology (the Continent Builder

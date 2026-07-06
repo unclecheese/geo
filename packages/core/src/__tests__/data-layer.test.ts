@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { DataLayer, largestPolygonCentroid } from "../data-layer";
+import { DataLayer, largestPolygonCentroid, flagPng } from "../data-layer";
 import { setKVStorage } from "../platform";
 import { memoryKV } from "./platform.test";
 import type { Feature } from "geojson";
+import type { Country } from "../types";
 
 beforeEach(() => {
   setKVStorage(memoryKV());
@@ -98,6 +99,22 @@ describe("DataLayer._hydrate id collisions", () => {
     const feat = DataLayer.featureById.get("004")!;
     const g = feat.geometry as { type: string; coordinates: number[][][] };
     expect(g.coordinates[0][0]).toEqual([0, 0]); // big square's first vertex
+  });
+});
+
+describe("flagPng", () => {
+  const country = (cca2: string | null): Country => ({ id: "x", name: "x", cca2, cca3: null, region: "x", neighbours: [] });
+
+  it("builds a flagcdn PNG url from cca2, defaulting to width 640", () => {
+    expect(flagPng(country("NZ"))).toBe("https://flagcdn.com/w640/nz.png");
+  });
+
+  it("honours an explicit width", () => {
+    expect(flagPng(country("NZ"), 320)).toBe("https://flagcdn.com/w320/nz.png");
+  });
+
+  it("returns an empty string when cca2 is null", () => {
+    expect(flagPng(country(null))).toBe("");
   });
 });
 
