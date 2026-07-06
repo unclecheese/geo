@@ -6,6 +6,7 @@ export * from "./ru-fix";
 export * from "./placement";
 export * from "./data-layer";
 export * from "./tiny-boxes";
+export * from "./map-transform";
 export * from "./platform";
 export * from "./ports";
 export * from "./stores/atlas-store";

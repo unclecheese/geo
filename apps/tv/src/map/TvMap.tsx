@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Canvas, Fill, Group, Path, Rect, Line, Circle } from "@shopify/react-native-skia";
 import { geoEqualEarth } from "d3-geo";
-import { DataLayer, type TinyBox } from "@geobean/core";
+import { DataLayer, type TinyBox, type MapTransform } from "@geobean/core";
 import { theme } from "../theme";
 import { buildCountryPaths } from "./SkiaPathContext";
 
@@ -15,7 +15,6 @@ export const PROJ = geoEqualEarth().fitExtent(
   { type: "Sphere" }
 );
 
-export type MapTransform = { k: number; tx: number; ty: number };
 export type PaintKind = "good" | "bad" | "target" | "sel";
 
 const PAINT_COLOR: Record<PaintKind, string> = {
