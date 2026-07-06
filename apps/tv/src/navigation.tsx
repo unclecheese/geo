@@ -5,6 +5,7 @@ import { ExpertQuizScreen } from "./screens/ExpertQuizScreen";
 import { BordersQuizScreen } from "./screens/BordersQuizScreen";
 import { ResultsScreen } from "./screens/ResultsScreen";
 import { StatsScreen } from "./screens/StatsScreen";
+import { MapProbeScreen } from "./screens/MapProbeScreen";
 
 /**
  * The six screens. Menu is the session-setup hub; the four quiz/results/stats
@@ -19,6 +20,9 @@ export type RootStackParamList = {
   BordersQuiz: undefined;
   Results: undefined;
   Stats: undefined;
+  // Task 9: temporary Skia-map probe. A later task folds the map into the real
+  // find/name flow and this route can go.
+  MapProbe: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -32,6 +36,7 @@ export function RootNavigator() {
       <Stack.Screen name="BordersQuiz" component={BordersQuizScreen} />
       <Stack.Screen name="Results" component={ResultsScreen} />
       <Stack.Screen name="Stats" component={StatsScreen} />
+      <Stack.Screen name="MapProbe" component={MapProbeScreen} />
     </Stack.Navigator>
   );
 }
