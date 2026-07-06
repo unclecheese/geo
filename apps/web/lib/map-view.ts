@@ -11,32 +11,19 @@ import {
   pointer,
 } from "d3";
 import type { Selection, ZoomBehavior } from "d3";
-import { Logic, MODES, BOX_COLORS, DataLayer, useAtlasStore, type Country } from "@geobean/core";
-import type { Feature, Polygon } from "geojson";
-
-// The projected area (px²) and bounding box of a feature's largest polygon —
-// its biggest single landmass on screen. Used both to decide whether a country
-// is a tiny island and to frame the outline box on that landmass (not the whole
-// scattered multipolygon, whose centre can be open ocean).
-function largestPolygon(
-  path: ReturnType<typeof geoPath>,
-  feature: Feature
-): { area: number; bounds: [[number, number], [number, number]] } | null {
-  const g = feature.geometry;
-  const rings =
-    g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
-  let best: Polygon | null = null;
-  let bestArea = -1;
-  for (const coordinates of rings) {
-    const poly: Polygon = { type: "Polygon", coordinates };
-    const a = path.area(poly as never);
-    if (a > bestArea) {
-      bestArea = a;
-      best = poly;
-    }
-  }
-  return best ? { area: bestArea, bounds: path.bounds(best as never) as [[number, number], [number, number]] } : null;
-}
+import {
+  Logic,
+  MODES,
+  BOX_COLORS,
+  DataLayer,
+  useAtlasStore,
+  computeTinyIds,
+  layoutTinyBoxes,
+  resolvePoint,
+  type Country,
+  type TinyBox,
+} from "@geobean/core";
+import type { Feature } from "geojson";
 
 type SVGSelection = Selection<SVGSVGElement, unknown, null, undefined>;
 type GSelection = Selection<SVGGElement, unknown, null, undefined>;
@@ -58,15 +45,11 @@ export const MapView = {
   _regionColor: null as null,
   _inited: false,
   tinyIds: new Set<string>(),
-  // Click-resolution sites: each locatable country's projected centroid (in the
-  // unzoomed g coordinate space). A missed click resolves to the nearest of
-  // these within HIT_CUTOFF on-screen px, giving every country a water buffer.
-  _sites: [] as { x: number; y: number; country: Country }[],
-  // Padded outline boxes framing tiny countries, in unzoomed g coordinates. Drawn
-  // inside the zoom group (so they scale with the map and reveal the country's
-  // geography when zoomed in) and sized so no two overlap. They are the primary
-  // click target for islands and microstates.
-  _boxes: [] as { x0: number; y0: number; x1: number; y1: number; country: Country }[],
+  // Padded outline boxes framing tiny islands, in unzoomed g coordinates (from
+  // @geobean/core's layoutTinyBoxes). Drawn inside the zoom group (so they
+  // scale with the map and reveal the country's geography when zoomed in) and
+  // sized so no two overlap. They are the primary click target for islands.
+  _boxes: [] as TinyBox[],
   _downPt: null as [number, number] | null,
   _pendingSelect: null as ReturnType<typeof setTimeout> | null,
   _mouseupHandler: null as (() => void) | null,
@@ -88,16 +71,6 @@ export const MapView = {
   // for the click to count as selecting it. Constant in screen space, so zooming
   // in shrinks the geographic catch area and lets you separate close neighbours.
   HIT_CUTOFF: 44,
-
-  // Island outline boxes, sized in unzoomed g units (scaled by the map's linear
-  // size at render). BOX_PAD is added around the island's own bounding box;
-  // BOX_MAX_HALF caps an isolated box; BOX_MIN_HALF floors it so an island that
-  // hugs a mainland (Singapore) still gets a clickable box. Boxes are shrunk
-  // where needed so none overlap each other (Logic.boxHalfSizesNoOverlap) or
-  // spill onto a neighbouring country's coastline.
-  BOX_PAD: 8,
-  BOX_MAX_HALF: 16,
-  BOX_MIN_HALF: 4,
 
   init(svgEl: SVGSVGElement, wrapEl: HTMLElement) {
     if (this._inited) this.destroy();
@@ -206,7 +179,6 @@ export const MapView = {
   render() {
     if (!this.gCountries || !this.gMarkers || !this.gLabels || !this.path || !this.projection) return;
     const feats = DataLayer.features;
-    this.tinyIds = new Set<string>();
     const self = this;
 
     this.gCountries
@@ -222,109 +194,32 @@ export const MapView = {
         if (c) self._scheduleSelect(c);
       });
 
-    // Build a click-resolution site (projected largest-polygon centroid) for
-    // every locatable country, and collect the tiny ISLANDS — small countries
-    // with no land border. Landlocked/coastal microstates (Vatican, Qatar, the
-    // Gambia) are excluded: they're clickable on their own land or their bigger
-    // neighbour, and don't want a box floating in someone else's territory.
-    const proj = this.projection;
-    // Sphere area normalises the tiny test so it's viewport-independent, and its
-    // square root scales the box padding/caps with the map's linear size so boxes
-    // stay proportionally the same on a phone and a wide monitor.
-    const sphereArea = this.path.area({ type: "Sphere" } as never) || 1;
-    const boxScale = Math.sqrt(sphereArea / 859371); // 859371 = sphere px² at the 1440×810 reference
-    const boxPad = this.BOX_PAD * boxScale;
-    const boxMaxHalf = this.BOX_MAX_HALF * boxScale;
-    const boxMinHalf = this.BOX_MIN_HALF * boxScale;
-    this._sites = [];
-    const islands: { c: Country; cx: number; cy: number; desired: number }[] = [];
-    for (const c of DataLayer.countries) {
-      if (!c.centroid) continue;
-      const p = proj(c.centroid);
-      if (!p || !isFinite(p[0]) || !isFinite(p[1])) continue;
-      this._sites.push({ x: p[0], y: p[1], country: c });
-      // Tiny = largest landmass is a minute fraction of the globe (or no polygon
-      // at all, e.g. Tuvalu). tinyIds drives close-framing in name mode and stays
-      // inclusive of microstates; only tiny ISLANDS (no land border) get a box.
-      const lp = c.feature ? largestPolygon(this.path, c.feature) : null;
-      if (lp && !Logic.isTiny(lp.area / sphereArea)) continue;
-      this.tinyIds.add(c.id);
-      if ((c._borders?.length ?? 0) !== 0) continue;
-      // Frame and centre the box on the largest island (not the whole scattered
-      // multipolygon), so the box sits on real land and reveals it when zoomed.
-      let cx = p[0],
-        cy = p[1],
-        extent = 0;
-      if (lp) {
-        const [[x0, y0], [x1, y1]] = lp.bounds;
-        cx = (x0 + x1) / 2;
-        cy = (y0 + y1) / 2;
-        extent = Math.max(x1 - x0, y1 - y0) / 2;
-      }
-      islands.push({ c, cx, cy, desired: Math.min(extent + boxPad, boxMaxHalf) });
-    }
-
-    // Two clamps, each only ever shrinking a box: (1) so no two island boxes
-    // overlap, and (2) so a box doesn't spill onto a neighbouring country's
-    // coastline (Chebyshev distance, since the box is a square). An island that
-    // hugs a mainland keeps a floor so it stays clickable, at the cost of a small
-    // unavoidable overlap.
-    const centers = islands.map((t) => ({ x: t.cx, y: t.cy }));
-    const halves = Logic.boxHalfSizesNoOverlap(centers, islands.map((t) => t.desired));
-    const coast = this._coastVertices(proj);
-    this._boxes = islands.map((t, i) => {
-      let half = halves[i];
-      let nearest = Infinity;
-      for (const v of coast) {
-        if (v.id === t.c.id) continue;
-        const cheb = Math.max(Math.abs(v.x - t.cx), Math.abs(v.y - t.cy));
-        if (cheb < nearest) nearest = cheb;
-      }
-      half = Math.min(half, Math.max(nearest, boxMinHalf));
-      return { x0: t.cx - half, y0: t.cy - half, x1: t.cx + half, y1: t.cy + half, country: t.c };
-    });
+    // Tiny classification and box geometry are pure (@geobean/core) so the TV
+    // find-quiz can reuse identical hit-resolution. Only the drawing stays here.
+    this.tinyIds = computeTinyIds(DataLayer.countries);
+    this._boxes = layoutTinyBoxes(DataLayer.countries, this.tinyIds, this.projection);
+    const byId = new Map(DataLayer.countries.map((c) => [c.id, c]));
 
     this.gMarkers
-      .selectAll<SVGRectElement, (typeof this._boxes)[number]>("rect.mk-box")
-      .data(this._boxes, (d) => d.country.id)
+      .selectAll<SVGRectElement, TinyBox>("rect.mk-box")
+      .data(this._boxes, (d) => d.id)
       .join("rect")
       .attr("class", "mk-box")
-      .attr("x", (d) => d.x0)
-      .attr("y", (d) => d.y0)
-      .attr("width", (d) => d.x1 - d.x0)
-      .attr("height", (d) => d.y1 - d.y0)
+      .attr("x", (d) => d.x)
+      .attr("y", (d) => d.y)
+      .attr("width", (d) => d.w)
+      .attr("height", (d) => d.h)
       .attr("rx", 1.5)
       .on("click", function (ev: MouseEvent, d) {
         ev.stopPropagation();
         if (self._isDrag(ev)) return;
-        self._scheduleSelect(d.country);
+        const c = byId.get(d.id);
+        if (c) self._scheduleSelect(c);
       });
 
     // Country names intentionally never rendered — keep labels layer empty.
     this.gLabels.selectAll("text.label").remove();
     this.gLabels.attr("opacity", 0);
-  },
-
-  // Projected exterior-ring vertices of every country with geometry, tagged with
-  // the owning country id. Used to clamp island boxes off foreign coastlines.
-  // Subsampled (every 2nd vertex) — coastlines are dense at 50m, so this stays
-  // accurate while keeping the one-off cost low.
-  _coastVertices(proj: ReturnType<typeof geoEqualEarth>): { x: number; y: number; id: string }[] {
-    const pts: { x: number; y: number; id: string }[] = [];
-    for (const c of DataLayer.countries) {
-      if (!c.feature) continue;
-      const g = c.feature.geometry;
-      const polys =
-        g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
-      for (const poly of polys) {
-        const ring = poly[0]; // exterior ring
-        for (let i = 0; i < ring.length; i += 2) {
-          const p = proj(ring[i] as [number, number]);
-          if (p && isFinite(p[0]) && isFinite(p[1])) pts.push({ x: p[0], y: p[1], id: c.id });
-        }
-      }
-    }
-    return pts;
   },
 
   _fillFor(feature: Feature): string {
@@ -392,7 +287,7 @@ export const MapView = {
       .attr("fill", (d) => this._fillFor(d));
     // Reset tiny-country boxes to their neutral outline (drop any inline colour).
     this.gMarkers
-      .selectAll<SVGRectElement, { country: Country }>("rect.mk-box")
+      .selectAll<SVGRectElement, TinyBox>("rect.mk-box")
       .attr("stroke", null)
       .attr("fill", null)
       .classed("hl", false);
@@ -410,8 +305,8 @@ export const MapView = {
     // For a tiny country the polygon is sub-pixel, so the visible feedback is the
     // outline box: colour its stroke and give it a faint matching wash.
     this.gMarkers
-      .selectAll<SVGRectElement, { country: Country }>("rect.mk-box")
-      .filter((d) => d.country.id === id)
+      .selectAll<SVGRectElement, TinyBox>("rect.mk-box")
+      .filter((d) => d.id === id)
       .attr("stroke", colors[kind])
       .attr("fill", colors[kind] + "33")
       .classed("hl", true);
@@ -432,8 +327,8 @@ export const MapView = {
     // Tiny countries have no visible polygon to flash, so pulse their box.
     if (this.gMarkers) {
       this.gMarkers
-        .selectAll<SVGRectElement, { country: Country }>("rect.mk-box")
-        .filter((d) => d.country.id === id)
+        .selectAll<SVGRectElement, TinyBox>("rect.mk-box")
+        .filter((d) => d.id === id)
         .interrupt()
         .attr("stroke", "var(--cream)")
         .transition()
@@ -488,21 +383,15 @@ export const MapView = {
   },
 
 
-  // Country for an on-screen click. First the tiny-country outline boxes: the
-  // click is mapped back into g-space and tested for containment (boxes don't
-  // overlap, so at most one matches). Otherwise the nearest country centroid
-  // within HIT_CUTOFF on-screen px — a water buffer for everything else.
+  // Country for an on-screen click. Delegates to @geobean/core's resolvePoint
+  // (tiny-box containment, then nearest centroid) in unzoomed g-space. HIT_CUTOFF
+  // is a constant on-screen px cutoff, so it's divided by the zoom scale to get
+  // the equivalent g-space radius before handing off.
   _countryAt(mx: number, my: number): Country | null {
-    if (!this.svg) return null;
+    if (!this.svg || !this.projection) return null;
     const t = zoomTransform(this.svg.node()!);
     const [wx, wy] = t.invert([mx, my]);
-    for (const b of this._boxes) {
-      if (wx >= b.x0 && wx <= b.x1 && wy >= b.y0 && wy <= b.y1) return b.country;
-    }
-    if (!this._sites.length) return null;
-    const screen = this._sites.map((s) => ({ x: t.applyX(s.x), y: t.applyY(s.y) }));
-    const i = Logic.nearestWithin(screen, mx, my, this.HIT_CUTOFF);
-    return i >= 0 ? this._sites[i].country : null;
+    return resolvePoint([wx, wy], this._boxes, DataLayer.countries, this.projection, this.HIT_CUTOFF / t.k);
   },
 
   // True if the pointer has moved far enough since mousedown that this was a
@@ -548,7 +437,6 @@ export const MapView = {
     this.zoom = null;
     this.onSelect = null;
     this.tinyIds = new Set();
-    this._sites = [];
     this._boxes = [];
     this._downPt = null;
     this._inited = false;
