@@ -7,6 +7,7 @@
     "build": "npm run build -w web",
     "start": "npm run start -w web",
     "test": "npm run test -ws --if-present",
-    "typecheck": "npm run typecheck -ws --if-present"
+    "typecheck": "npm run typecheck -ws --if-present",
+    "tv": "export NVM_DIR=\"$HOME/.nvm\"; . \"$NVM_DIR/nvm.sh\"; export PATH=\"$(dirname \"$(nvm which 20)\"):$PATH\"; npm run ios --prefix apps/tv -- --simulator \"Apple TV 4K (3rd generation)\""
   }
 }
