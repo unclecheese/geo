@@ -65,13 +65,15 @@ export default function QuizPage() {
   };
 
   const progressText = session ? `${session.asked} / ${session.total}` : "";
+  const progressPct =
+    session && session.total ? `${Math.round((session.asked / session.total) * 100)}%` : "0%";
 
   const item = current?.item;
   const mode = current?.mode;
   const difficult = settings.quizDifficulty === "difficult";
 
   // Autocomplete candidates from the active pool (difficult mode only).
-  const activePool = Logic.filterPool(DataLayer.countries, settings.regions, settings.subregions);
+  const activePool = Logic.filterPool(DataLayer.countries, settings.regions);
   const capitalCandidates = [
     ...new Set(
       activePool.filter((c) => c.capital && c.capital !== "—").map((c) => c.capital as string)
@@ -97,6 +99,9 @@ export default function QuizPage() {
         <div className="q-top">
           <span className="q-mode">{mode ? MODES[mode].label : "—"}</span>
           <span className="q-progress">{progressText}</span>
+        </div>
+        <div className="q-bar" aria-hidden>
+          <div className="q-bar-fill" style={{ width: progressPct }} />
         </div>
 
         {item && mode === "capital" && (

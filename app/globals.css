@@ -204,17 +204,31 @@ button { font-family: inherit; cursor: pointer; }
   text-align: left; transition: all .14s ease;
 }
 .bsel:hover:not(:disabled) { background: #fff; border-color: var(--accent); }
-.bsel.sel { background: var(--accent-soft); border-color: var(--accent); }
+/* Selected chip: filled primary (brass) with a tick, unmistakable against the
+   plain parchment of unselected ones. */
+.bsel.sel { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.bsel.sel:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: #fff; filter: brightness(1.06); }
 .bsel.correct { background: var(--good-tint); border-color: var(--good); color: #1f5236; }
 .bsel.wrong { background: var(--bad-tint); border-color: var(--bad); color: #6f2418; }
 .bsel.missed { border-color: var(--warn); border-style: dashed; }
 .bsel:disabled { cursor: default; }
 
-/* multi-select region/subregion grid: tighter chips that wrap, plus a full-width
-   "All …" affordance that clears the selection (whole world). */
+/* multi-select region grid: tighter chips that wrap, plus a full-width "All
+   regions" toggle. The All toggle is deliberately styled unlike the chips — a
+   dashed outline when off, a solid forest fill when on — so it reads as the
+   select-all control, not just another region. */
 .border-grid.multi { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
 .border-grid.multi .bsel { padding: 10px 12px; font-size: 13.5px; }
-.border-grid.multi .bsel.all { grid-column: 1 / -1; font-weight: 700; }
+.border-grid.multi .bsel.all {
+  grid-column: 1 / -1; text-align: center; font-weight: 700;
+  background: var(--paper-inset); border: 1px dashed var(--hair); color: var(--ink);
+}
+.border-grid.multi .bsel.all.sel {
+  background: var(--accent-2); border: 1px solid var(--accent-2); color: #fff;
+}
+.border-grid.multi .bsel.all.sel:hover:not(:disabled) {
+  background: var(--accent-2); border-color: var(--accent-2); color: #fff; filter: brightness(1.06);
+}
 
 /* ---------- Icon controls (parchment chips on navy) ---------- */
 .icon-btn {
@@ -312,8 +326,28 @@ select:focus { border-color: var(--accent); }
   background: var(--paper-inset); border: 1px solid var(--hair);
 }
 
-/* Hint button in the map HUD controls */
-.hint-btn { margin-top: 12px; }
+/* Hint button in the map HUD controls — a low-key escape hatch, not a primary
+   action, so it's a small muted text link rather than a full button. */
+.hint-btn {
+  display: block;
+  margin: 12px auto 0;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  color: var(--ink-faint);
+  font-size: 12.5px;
+  font-family: var(--ff-body);
+  font-style: italic;
+  cursor: pointer;
+  opacity: .85;
+  transition: opacity .15s, color .15s;
+}
+.hint-btn:hover:not(:disabled) { opacity: 1; color: var(--ink-dim); text-decoration: underline; }
+.hint-btn:disabled { opacity: .4; cursor: default; }
+
+/* Slim question-progress bar under the q-top, shared by all quiz families. */
+.q-bar { height: 4px; border-radius: 999px; background: var(--paper-inset); overflow: hidden; margin: 8px 0 2px; }
+.q-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s ease; }
 
 .map-actions { margin-top: 14px; display: flex; gap: 9px; }
 .map-actions .btn { width: auto; flex: 1; }

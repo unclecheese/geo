@@ -108,16 +108,32 @@ export default function MapPage() {
   const difficult = settings.quizDifficulty === "difficult";
 
   const progressText = session ? `${session.asked} / ${session.total}` : "";
+  const progressPct =
+    session && session.total ? `${Math.round((session.asked / session.total) * 100)}%` : "0%";
 
   // Difficult name mode types the answer — candidates are the active pool's names.
-  const activePool = Logic.filterPool(DataLayer.countries, settings.regions, settings.subregions);
+  const activePool = Logic.filterPool(DataLayer.countries, settings.regions);
   const nameCandidates = [...new Set(activePool.map((c) => c.name))];
 
-  // Hint button shows for find and name modes while the question is unanswered.
-  // (Difficult name mode always has a hangman mask; its hint reveals a letter.)
+  // The hint button is a low-key escape hatch: it always reads "Show hint" (or
+  // "Show another hint" once one's been used) and disables when the mode's hints
+  // run out. What a hint reveals is mode-specific — location clues for find, an
+  // eliminated option for easy name, a hangman letter for difficult name.
   const canHint = !answered && (mode === "find" || mode === "name");
-  const hintLabel =
-    mode === "name" && !difficult ? "Eliminate an option" : "Hint";
+  let hintUsed = false;
+  let hintExhausted = false;
+  if (mode === "find") {
+    hintUsed = hintLevel > 0;
+    hintExhausted = hintLevel >= 3;
+  } else if (mode === "name" && !difficult && item) {
+    hintUsed = eliminatedIds.length > 0;
+    hintExhausted = choices.every((c) => c.id === item.id || eliminatedIds.includes(c.id));
+  } else if (mode === "name" && difficult && item) {
+    // revealedCount 0 = hangman hidden, 1 = all blanks, k = k-1 letters shown.
+    hintUsed = revealedCount > 0;
+    hintExhausted = revealedCount >= Logic.letterCount(item.name) + 1;
+  }
+  const hintLabel = hintUsed ? "Show another hint" : "Show hint";
 
   // Cumulative location hints for find mode, driven by hintLevel (0..3).
   const findHints: string[] = [];
@@ -173,6 +189,9 @@ export default function MapPage() {
           <span className="q-mode">{mode ? MODES[mode].label : "—"}</span>
           <span className="q-progress">{progressText}</span>
         </div>
+        <div className="q-bar" aria-hidden>
+          <div className="q-bar-fill" style={{ width: progressPct }} />
+        </div>
 
         <div id="q-body">
           {item && mode === "find" && (
@@ -189,9 +208,9 @@ export default function MapPage() {
                 Name the <span className="em">highlighted</span> country
               </div>
               <div className="q-sub">It&apos;s glowing on the map</div>
-              {difficult && (
+              {difficult && revealedCount > 0 && (
                 <div className="hangman" aria-label="Answer letters">
-                  {Logic.revealName(item.name, revealedCount)}
+                  {Logic.revealName(item.name, revealedCount - 1)}
                 </div>
               )}
             </>
@@ -224,8 +243,8 @@ export default function MapPage() {
             />
           )}
           {canHint && (
-            <button className="btn ghost hint-btn" onClick={useHint}>
-              💡 {hintLabel}
+            <button className="hint-btn" onClick={useHint} disabled={hintExhausted}>
+              💡 {hintExhausted ? "No more hints" : hintLabel}
             </button>
           )}
         </div>

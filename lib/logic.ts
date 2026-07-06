@@ -166,14 +166,10 @@ export const Logic = {
     return prev[n];
   },
 
-  // Region/subregion filter over the country list. Multi-select: an empty
-  // array means "no filter" (all pass) for that dimension.
-  filterPool(countries: Country[], regions: string[], subregions: string[]): Country[] {
-    return countries.filter((c) => {
-      if (regions.length && !regions.includes(c.region)) return false;
-      if (subregions.length && !(c.subregion && subregions.includes(c.subregion))) return false;
-      return true;
-    });
+  // Region filter over the country list. Multi-select: an empty array means "no
+  // filter" (all countries pass) — the whole world.
+  filterPool(countries: Country[], regions: string[]): Country[] {
+    return regions.length ? countries.filter((c) => regions.includes(c.region)) : countries.slice();
   },
 
   // Hangman-style mask: reveal the first `count` alphabetic letters

@@ -5,7 +5,7 @@ vi.mock("@/lib/map-view", () => ({ MapView: { _inited: false } }));
 // Silence toast + fx so grading doesn't reach into the DOM/audio.
 vi.mock("@/store/toast-store", () => ({ toast: vi.fn() }));
 vi.mock("@/lib/fx", () => ({
-  Audio2: { correct: vi.fn(), wrong: vi.fn(), milestone: vi.fn() },
+  Audio2: { correct: vi.fn(), wrong: vi.fn(), milestone: vi.fn(), hint: vi.fn() },
   Confetti: { burst: vi.fn() },
 }));
 
@@ -134,21 +134,22 @@ describe("quiz-store: hints", () => {
     expect(useQuizStore.getState().eliminatedIds.length).toBe(3);
   });
 
-  it("typed name mode reveals letters up to the name's length", () => {
+  it("typed name mode reveals the mask then letters, capped at letterCount + 1", () => {
     seed("name", { choices: [] });
     const { useHint } = useQuizStore.getState();
+    // First hint reveals the all-blank mask (revealedCount 1 = 0 letters shown).
     useHint();
     expect(useQuizStore.getState().revealedCount).toBe(1);
-    // "Italy" has 5 letters; keep going past it and it caps.
+    // "Italy" has 5 letters; letters shown = revealedCount - 1, so it caps at 6.
     for (let i = 0; i < 10; i++) useHint();
-    expect(useQuizStore.getState().revealedCount).toBe(5);
+    expect(useQuizStore.getState().revealedCount).toBe(6);
   });
 
   it("typed capital mode reveals letters of the CAPITAL, not the country", () => {
     seed("capital", { choices: [] });
     const { useHint } = useQuizStore.getState();
     for (let i = 0; i < 20; i++) useHint();
-    // "Rome" has 4 letters.
-    expect(useQuizStore.getState().revealedCount).toBe(4);
+    // "Rome" has 4 letters; caps at letterCount + 1 (the all-blank mask step).
+    expect(useQuizStore.getState().revealedCount).toBe(5);
   });
 });

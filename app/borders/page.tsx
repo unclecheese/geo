@@ -82,6 +82,8 @@ export default function BordersPage() {
   };
 
   const progressText = session ? `${session.asked} / ${session.total}` : "";
+  const progressPct =
+    session && session.total ? `${Math.round((session.asked / session.total) * 100)}%` : "0%";
   const nums = shown.map((_, i) => i + 1); // badge numbers 1..n
 
   // Naming candidates for difficult mode: any country (neighbours may sit outside
@@ -115,6 +117,9 @@ export default function BordersPage() {
         <div className="q-top">
           <span className="q-mode">Borders</span>
           <span className="q-progress">{progressText}</span>
+        </div>
+        <div className="q-bar" aria-hidden>
+          <div className="q-bar-fill" style={{ width: progressPct }} />
         </div>
 
         {target && (

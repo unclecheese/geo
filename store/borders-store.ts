@@ -23,7 +23,7 @@ const neighboursOf = (c: Country): Country[] => c.neighbours.filter(drawable);
 
 const pool = (): Country[] => {
   const s = useAtlasStore.getState().settings;
-  return Logic.filterPool(DataLayer.countries, s.regions, s.subregions);
+  return Logic.filterPool(DataLayer.countries, s.regions);
 };
 
 // Targets: framable countries in the active pool with ≥1 drawable neighbour.

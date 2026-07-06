@@ -81,15 +81,14 @@ describe("Logic.sanitizeModes", () => {
 });
 
 describe("Logic.filterPool", () => {
-  const pool = [mk("1", "Asia", { subregion: "Eastern Asia" }), mk("2", "Europe"), mk("3", "Asia")];
-  it("filters by region and subregion (multi-select)", () => {
-    expect(Logic.filterPool(pool, ["Asia"], []).map((c) => c.id)).toEqual(["1", "3"]);
-    expect(Logic.filterPool(pool, ["Asia"], ["Eastern Asia"]).map((c) => c.id)).toEqual(["1"]);
-    expect(Logic.filterPool(pool, [], [])).toHaveLength(3);
+  const pool = [mk("1", "Asia"), mk("2", "Europe"), mk("3", "Asia")];
+  it("filters by region (multi-select)", () => {
+    expect(Logic.filterPool(pool, ["Asia"]).map((c) => c.id)).toEqual(["1", "3"]);
+    expect(Logic.filterPool(pool, ["Europe"]).map((c) => c.id)).toEqual(["2"]);
   });
-  it("treats an empty array as no filter, and unions multiple selections", () => {
-    expect(Logic.filterPool(pool, ["Asia", "Europe"], []).map((c) => c.id)).toEqual(["1", "2", "3"]);
-    expect(Logic.filterPool(pool, [], ["Eastern Asia"]).map((c) => c.id)).toEqual(["1"]);
+  it("treats an empty array as no filter (whole world), and unions multiple selections", () => {
+    expect(Logic.filterPool(pool, [])).toHaveLength(3);
+    expect(Logic.filterPool(pool, ["Asia", "Europe"]).map((c) => c.id)).toEqual(["1", "2", "3"]);
   });
 });
 

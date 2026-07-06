@@ -94,7 +94,7 @@ const activeModes = (): ModeId[] => {
 
 const pool = (): Country[] => {
   const s = useAtlasStore.getState().settings;
-  return Logic.filterPool(DataLayer.countries, s.regions, s.subregions);
+  return Logic.filterPool(DataLayer.countries, s.regions);
 };
 
 // Modes graded by picking/typing a country name or capital — the ones that
@@ -382,20 +382,30 @@ export const useQuizStore = create<QuizState>((set, get) => ({
 
     if (mode === "find") {
       // Location clues escalate: region → subregion → border countries.
-      set({ hintLevel: Math.min(3, state.hintLevel + 1) });
+      if (state.hintLevel >= 3) return;
+      set({ hintLevel: state.hintLevel + 1 });
+      Audio2.hint();
       return;
     }
 
     if (state.choices.length) {
       // Multiple choice: strike out one remaining wrong option.
       const id = Logic.nextEliminate(state.choices, item.id, state.eliminatedIds);
-      if (id) set({ eliminatedIds: [...state.eliminatedIds, id] });
+      if (!id) return;
+      set({ eliminatedIds: [...state.eliminatedIds, id] });
+      Audio2.hint();
       return;
     }
 
-    // Typed: reveal one more letter of the answer (capital name, or country name).
+    // Typed hangman: the answer stays fully hidden until the first hint. That
+    // first press (revealedCount 0→1) shows the all-blank mask; each later press
+    // reveals one more letter. So displayed letters = revealedCount - 1, and the
+    // cap is letterCount + 1 (the terminal, all-letters state).
     const answer = hintTarget(item, mode);
-    set({ revealedCount: Math.min(Logic.letterCount(answer), state.revealedCount + 1) });
+    const maxReveal = Logic.letterCount(answer) + 1;
+    if (state.revealedCount >= maxReveal) return;
+    set({ revealedCount: state.revealedCount + 1 });
+    Audio2.hint();
   },
 
   grade: (correct, extra = {}) => {

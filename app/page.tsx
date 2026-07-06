@@ -53,18 +53,6 @@ export default function MenuPage() {
     ? Array.from(new Set(DataLayer.countries.map((c) => c.region))).sort()
     : [];
   const regionOptions = isBuild ? [...BuildGraph.SUPPORTED] : allRegions;
-  // Subregion options reflect the selected regions (or every region when none
-  // are selected). Multi-select for map/quiz; build stays single-continent.
-  const subOptions = ready
-    ? Array.from(
-      new Set(
-        DataLayer.countries
-          .filter((c) => !settings.regions.length || settings.regions.includes(c.region))
-          .map((c) => c.subregion as string)
-          .filter(Boolean)
-      )
-    ).sort()
-    : [];
 
   // Open a card → normalise the mode set to that family and show its settings.
   const openCard = (type: CardType) => {
@@ -91,7 +79,6 @@ export default function MenuPage() {
       } else {
         patch.regions = [current];
       }
-      patch.subregions = [];
     }
     setSettings(patch);
     setSelected(type);
@@ -115,32 +102,36 @@ export default function MenuPage() {
     setSettings({ modes: [...set] });
   };
 
-  // Build: single continent — replace the whole selection, clear subregions.
-  const onBuildRegion = (region: string) => setSettings({ regions: [region], subregions: [] });
+  // Build: single continent — replace the whole selection.
+  const onBuildRegion = (region: string) => setSettings({ regions: [region] });
 
-  // Map/Quiz: toggle a region in/out. Dropping a region also drops any of its
-  // subregions so the two selections stay consistent.
+  // Map/Quiz region selector. Empty = whole world, shown as every region ticked.
+  // Tapping from the all-state narrows to just that region; otherwise it toggles.
+  // The set can never be emptied to nothing — dropping the last one (or picking
+  // every region) normalises back to [] (whole world, all ticked).
+  const regionOn = (r: string) =>
+    hydrated && (settings.regions.length === 0 || settings.regions.includes(r));
+
   const toggleRegion = (region: string) => {
-    const has = settings.regions.includes(region);
-    const regions = has
-      ? settings.regions.filter((r) => r !== region)
-      : [...settings.regions, region];
-    const inScope = new Set(
-      DataLayer.countries
-        .filter((c) => !regions.length || regions.includes(c.region))
-        .map((c) => c.subregion as string)
-    );
-    const subregions = settings.subregions.filter((s) => inScope.has(s));
-    setSettings({ regions, subregions });
+    let next: string[];
+    if (settings.regions.length === 0) {
+      next = [region]; // narrowing from "all" → focus this one
+    } else if (settings.regions.includes(region)) {
+      next = settings.regions.filter((r) => r !== region);
+    } else {
+      next = [...settings.regions, region];
+    }
+    // A full set (or an emptied one) is just the whole world — store the canonical [].
+    if (next.length === 0 || next.length === regionOptions.length) next = [];
+    const nowOn = next.length === 0 || next.includes(region);
+    Audio2.tick(nowOn);
+    setSettings({ regions: next });
   };
 
-  const toggleSubregion = (sub: string) => {
-    const has = settings.subregions.includes(sub);
-    setSettings({
-      subregions: has
-        ? settings.subregions.filter((s) => s !== sub)
-        : [...settings.subregions, sub],
-    });
+  // "All regions": re-select the whole world (every region ticked).
+  const selectAllRegions = () => {
+    Audio2.tick(true);
+    setSettings({ regions: [] });
   };
 
   const setDifficulty = (d: BuildDifficulty) =>
@@ -221,69 +212,35 @@ export default function MenuPage() {
     </div>
   );
 
-  // Map/Quiz: multi-select toggle grids. An empty selection means the whole
-  // world; "All regions" selects everything explicitly so you can then deselect
-  // the few you want to exclude (e.g. all subregions except the Caribbean).
-  // Both empty and a full set filter identically, so "all" reads as selected
-  // in either case (mirrored for subregions).
+  // Map/Quiz: a multi-select region grid. Empty = whole world, shown as every
+  // region ticked; "All regions" is a distinct toggle-all that re-selects the
+  // lot. A full explicit set is normalised to [], so "all" always reads as on.
   const allRegionsOn =
     hydrated && (settings.regions.length === 0 || settings.regions.length === regionOptions.length);
-  const allSubsOn =
-    hydrated &&
-    (settings.subregions.length === 0 || settings.subregions.length === subOptions.length);
   const MultiRegionBlock = (
-    <>
-      <div className="section">
-        <h3>Regions</h3>
-        <div className="border-grid multi">
+    <div className="section">
+      <h3>Regions</h3>
+      <div className="border-grid multi">
+        <button
+          className={"bsel all" + (allRegionsOn ? " sel" : "")}
+          onClick={selectAllRegions}
+          disabled={!ready}
+        >
+          {allRegionsOn ? "✓ " : ""}🌍 All regions
+        </button>
+        {regionOptions.map((r) => (
           <button
-            className={"bsel all" + (allRegionsOn ? " sel" : "")}
-            onClick={() => setSettings({ regions: [...regionOptions], subregions: [] })}
+            key={r}
+            className={"bsel" + (regionOn(r) ? " sel" : "")}
+            onClick={() => toggleRegion(r)}
             disabled={!ready}
           >
-            🌍 All regions
+            {regionOn(r) ? "✓ " : ""}{r}
           </button>
-          {regionOptions.map((r) => (
-            <button
-              key={r}
-              className={"bsel" + (hydrated && settings.regions.includes(r) ? " sel" : "")}
-              onClick={() => toggleRegion(r)}
-              disabled={!ready}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
-        <p className="hint-line">None selected = whole world. Or tap All, then deselect a region to exclude it.</p>
+        ))}
       </div>
-      {subOptions.length > 0 && (
-        <div className="section">
-          <h3>Subregions</h3>
-          <div className="border-grid multi">
-            <button
-              className={"bsel all" + (allSubsOn ? " sel" : "")}
-              onClick={() => setSettings({ subregions: [...subOptions] })}
-              disabled={!ready}
-            >
-              All subregions
-            </button>
-            {subOptions.map((s) => (
-              <button
-                key={s}
-                className={"bsel" + (hydrated && settings.subregions.includes(s) ? " sel" : "")}
-                onClick={() => toggleSubregion(s)}
-                disabled={!ready}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-          <p className="hint-line">
-            Tap a few to narrow, or tap All subregions then deselect any you want to exclude — e.g. everything except the Caribbean.
-          </p>
-        </div>
-      )}
-    </>
+      <p className="hint-line">Everything&apos;s on by default. Tap a region to focus it, then tap more to add.</p>
+    </div>
   );
 
   const RegionBlock = isBuild ? BuildRegionBlock : MultiRegionBlock;

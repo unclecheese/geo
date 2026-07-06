@@ -31,10 +31,11 @@ describe("migrateState", () => {
     expect(m.settings.showNames).toBe(true);
   });
 
-  it("maps a legacy 'all' region/subregion to empty arrays (no filter)", () => {
-    const m = migrateState({ settings: { region: "all", subregion: "all" } });
+  it("maps a legacy 'all' region to an empty array and drops the removed subregion setting", () => {
+    const m = migrateState({ settings: { region: "all", subregion: "all", subregions: ["Western Europe"] } });
     expect(m.settings.regions).toEqual([]);
-    expect(m.settings.subregions).toEqual([]);
+    expect((m.settings as unknown as Record<string, unknown>).subregion).toBeUndefined();
+    expect((m.settings as unknown as Record<string, unknown>).subregions).toBeUndefined();
   });
 
   it("preserves a valid leitner map and history array", () => {

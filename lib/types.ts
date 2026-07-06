@@ -72,8 +72,7 @@ export type QuizDifficulty = "easy" | "difficult";
 
 export interface Settings {
   modes: ModeId[];
-  regions: string[]; // selected regions; empty = all regions
-  subregions: string[]; // selected subregions; empty = all subregions
+  regions: string[]; // selected regions; empty = all regions (whole world)
   quizDifficulty: QuizDifficulty; // multiple-choice vs typed for name/capital/flag
   session: string; // "round" (fixed count) | "around" (around the world — every country)
   roundLen: number;

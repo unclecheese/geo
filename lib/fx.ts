@@ -56,6 +56,16 @@ export const Audio2 = {
   milestone() {
     this.blip([523, 659, 784, 1046], 0.18, "triangle");
   },
+  // A soft two-note shimmer when a hint is revealed — a gentle nudge, not a
+  // celebration. Lighter and higher than `correct` so the two never blur.
+  hint() {
+    this.blip([784, 1046], 0.13, "sine");
+  },
+  // A short tick for toggling a setting — a little higher when switching on than
+  // off, so selecting and deselecting feel different.
+  tick(on = true) {
+    this.blip([on ? 660 : 440], 0.05, "sine");
+  },
 
   // A tactile "clunk" for a piece snapping home.
   place() {
