@@ -1,31 +1,12 @@
 {
-  "name": "atlas",
-  "version": "0.1.0",
+  "name": "geobean",
   "private": true,
+  "workspaces": ["apps/web"],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "dependencies": {
-    "d3": "^7.9.0",
-    "next": "^15.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "topojson-client": "^3.1.0",
-    "zustand": "^5.0.0"
-  },
-  "devDependencies": {
-    "@types/d3": "^7.4.3",
-    "@types/geojson": "^7946.0.14",
-    "@types/node": "^22.10.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@types/topojson-client": "^3.1.5",
-    "typescript": "^5.7.0",
-    "vitest": "^2.1.0"
+    "dev": "npm run dev -w web",
+    "build": "npm run build -w web",
+    "start": "npm run start -w web",
+    "test": "npm run test -ws --if-present",
+    "typecheck": "npm run typecheck -ws --if-present"
   }
 }
