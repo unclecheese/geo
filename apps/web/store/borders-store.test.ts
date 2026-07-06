@@ -1,14 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-// Isolate the store from browser-only deps.
-vi.mock("@/store/toast-store", () => ({ toast: vi.fn() }));
+// Isolate the store from browser-only deps. useAtlasStore et al. from the same
+// module must stay real, so patch just `toast` in.
+vi.mock("@geobean/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@geobean/core")>()),
+  toast: vi.fn(),
+}));
 vi.mock("@/lib/fx", () => ({
   Audio2: { correct: vi.fn(), wrong: vi.fn(), milestone: vi.fn(), ensure: vi.fn() },
   Confetti: { burst: vi.fn() },
 }));
 
 import { useBordersStore } from "@/store/borders-store";
-import { useAtlasStore } from "@/store/atlas-store";
+import { useAtlasStore } from "@geobean/core";
 import type { Country } from "@geobean/core";
 import type { QuizSession } from "@/store/quiz-store";
 

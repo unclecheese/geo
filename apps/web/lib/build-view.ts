@@ -14,7 +14,6 @@ import {
 } from "d3";
 import type { Selection, ZoomBehavior, ZoomTransform } from "d3";
 import { merge as topoMerge } from "topojson-client";
-import { DataLayer } from "@/lib/data-layer";
 import {
   Logic,
   Placement,
@@ -23,10 +22,11 @@ import {
   crimeaPolygon,
   RU_CCN3,
   UA_CCN3,
+  DataLayer,
+  useAtlasStore,
   type Country,
 } from "@geobean/core";
 import { Audio2 } from "@/lib/fx";
-import { useAtlasStore } from "@/store/atlas-store";
 import type { Feature, FeatureCollection } from "geojson";
 
 type SVGSel = Selection<SVGSVGElement, unknown, null, undefined>;

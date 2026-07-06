@@ -2,15 +2,19 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // MapView is browser-only; stub it so the deferred imports no-op (gated on _inited).
 vi.mock("@/lib/map-view", () => ({ MapView: { _inited: false } }));
-// Silence toast + fx so grading doesn't reach into the DOM/audio.
-vi.mock("@/store/toast-store", () => ({ toast: vi.fn() }));
+// Silence toast + fx so grading doesn't reach into the DOM/audio. useAtlasStore
+// et al. from the same module must stay real, so patch just `toast` in.
+vi.mock("@geobean/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@geobean/core")>()),
+  toast: vi.fn(),
+}));
 vi.mock("@/lib/fx", () => ({
   Audio2: { correct: vi.fn(), wrong: vi.fn(), milestone: vi.fn(), hint: vi.fn() },
   Confetti: { burst: vi.fn() },
 }));
 
 import { useQuizStore } from "@/store/quiz-store";
-import { useAtlasStore } from "@/store/atlas-store";
+import { useAtlasStore } from "@geobean/core";
 import type { Country, ModeId } from "@geobean/core";
 import type { QuizSession } from "@/store/quiz-store";
 

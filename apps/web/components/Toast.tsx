@@ -1,6 +1,6 @@
 "use client";
 
-import { useToastStore } from "@/store/toast-store";
+import { useToastStore } from "@geobean/core";
 
 // #toast overlay — driven by the global toast store. Mirrors UI.toast markup so
 // the ported #toast CSS (slide-in + good/bad borders) applies unchanged.

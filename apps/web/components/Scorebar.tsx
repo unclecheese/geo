@@ -1,7 +1,6 @@
 "use client";
 
-import { Logic } from "@geobean/core";
-import { useAtlasStore } from "@/store/atlas-store";
+import { Logic, useAtlasStore } from "@geobean/core";
 import { useQuizStore } from "@/store/quiz-store";
 
 // Floating score / accuracy / streak / time pills. Score & streak come from the

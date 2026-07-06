@@ -1,7 +1,7 @@
 // Browser-only sound + confetti, ported verbatim from the single-file Audio2 /
 // Confetti modules. No DOM/React — call these from client code only. Sound is
 // gated on the persisted `sound` setting, read lazily to avoid an import cycle.
-import { useAtlasStore } from "@/store/atlas-store";
+import { useAtlasStore } from "@geobean/core";
 
 const soundOn = (): boolean => {
   try {

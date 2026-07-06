@@ -3,8 +3,7 @@
 import { useMemo } from "react";
 import { geoBounds, geoMercator, geoPath } from "d3";
 import type { Feature } from "geojson";
-import { Logic, type Country } from "@geobean/core";
-import { DataLayer } from "@/lib/data-layer";
+import { Logic, DataLayer, type Country } from "@geobean/core";
 
 interface FrameViewProps {
   target: Country;

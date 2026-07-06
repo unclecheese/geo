@@ -1,6 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { DataLayer, largestPolygonCentroid } from "@/lib/data-layer";
+import { describe, it, expect, beforeEach } from "vitest";
+import { DataLayer, largestPolygonCentroid } from "../data-layer";
+import { setKVStorage } from "../platform";
+import { memoryKV } from "./platform.test";
 import type { Feature } from "geojson";
+
+beforeEach(() => {
+  setKVStorage(memoryKV());
+});
 
 // A tiny but valid TopoJSON: two square countries (ids 4 and 76). Country 586
 // (Pakistan) deliberately has NO geometry, to exercise the feature-less path.

@@ -1,14 +1,9 @@
 import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import {
-  Logic,
-  STATE_KEY,
-  STATE_VERSION,
-  type AtlasState,
-  type HistoryEntry,
-  type ModeId,
-  type Settings,
-} from "@geobean/core";
+import { Logic } from "../logic";
+import { STATE_KEY, STATE_VERSION } from "../constants";
+import type { AtlasState, HistoryEntry, ModeId, Settings } from "../types";
+import { getKVStorage } from "../platform";
 
 export function defaultState(): AtlasState {
   return {
@@ -68,17 +63,16 @@ export function migrateState(raw: unknown): AtlasState {
   };
 }
 
-const hasStorage = () => typeof window !== "undefined" && !!window.localStorage;
-
 /**
- * localStorage adapter that understands both zustand's `{ state, version }`
+ * KVStorage adapter that understands both zustand's `{ state, version }`
  * wrapper and the legacy bare object the single-file app wrote under the same
  * key — so a user's existing progress survives the cutover.
  */
 const legacyAwareStorage: StateStorage = {
-  getItem: (name) => {
-    if (!hasStorage()) return null;
-    const raw = localStorage.getItem(name);
+  getItem: async (name) => {
+    const kv = getKVStorage();
+    if (!kv) return null;
+    const raw = await kv.get(name);
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw);
@@ -89,12 +83,8 @@ const legacyAwareStorage: StateStorage = {
       return null;
     }
   },
-  setItem: (name, value) => {
-    if (hasStorage()) localStorage.setItem(name, value);
-  },
-  removeItem: (name) => {
-    if (hasStorage()) localStorage.removeItem(name);
-  },
+  setItem: async (name, value) => { await getKVStorage()?.set(name, value); },
+  removeItem: async (name) => { await getKVStorage()?.remove(name); },
 };
 
 interface VerdictInput {
@@ -175,6 +165,11 @@ export const useAtlasStore = create<AtlasStore>()(
       name: STATE_KEY,
       version: STATE_VERSION,
       storage: createJSONStorage(() => legacyAwareStorage),
+      // Hydration must wait until a platform registers storage via
+      // setKVStorage — otherwise the store would race an unregistered
+      // adapter and silently start from defaults. Platforms call
+      // useAtlasStore.persist.rehydrate() explicitly after registering.
+      skipHydration: true,
       // Run persisted state through migrateState so older saves gain new setting
       // defaults (e.g. buildDifficulty) and retired values (session "endless")
       // are normalised — zustand's default shallow merge would skip all that.

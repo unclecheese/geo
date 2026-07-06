@@ -1,8 +1,6 @@
 "use client";
 
-import { BOX_COLORS } from "@geobean/core";
-import { DataLayer } from "@/lib/data-layer";
-import { useAtlasStore } from "@/store/atlas-store";
+import { BOX_COLORS, DataLayer, useAtlasStore } from "@geobean/core";
 import { Sparkline } from "@/components/Sparkline";
 
 interface StatsDashboardProps {

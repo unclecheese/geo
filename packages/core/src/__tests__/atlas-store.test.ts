@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { defaultState, migrateState, useAtlasStore } from "@/store/atlas-store";
+import { defaultState, migrateState, useAtlasStore } from "../stores/atlas-store";
+import { setKVStorage } from "../platform";
+import { STATE_KEY } from "../constants";
+import { memoryKV } from "./platform.test";
+
+beforeEach(async () => {
+  setKVStorage(memoryKV());
+  await useAtlasStore.persist.rehydrate();
+});
 
 describe("defaultState", () => {
   it("is a fresh version-2 state with map modes", () => {
@@ -111,5 +119,16 @@ describe("store actions", () => {
     expect(useAtlasStore.getState().stats.bestStreak).toBe(3);
     rbs(7);
     expect(useAtlasStore.getState().stats.bestStreak).toBe(7);
+  });
+
+  it("persists through the injected KVStorage", async () => {
+    const kv = memoryKV();
+    setKVStorage(kv);
+    await useAtlasStore.persist.rehydrate();
+    useAtlasStore.getState().setSettings({ roundLen: 25 });
+    await new Promise((r) => setTimeout(r, 0)); // let async setItem flush
+    const raw = kv.data.get(STATE_KEY);
+    expect(raw).toBeTruthy();
+    expect(JSON.parse(raw!).state.settings.roundLen).toBe(25);
   });
 });

@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { DataLayer } from "@/lib/data-layer";
+import { DataLayer } from "@geobean/core";
+import { registerWebPlatform } from "@/lib/platform-web";
 
 interface DataContextValue {
   ready: boolean;
@@ -28,6 +29,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (startedRef.current) return;
     startedRef.current = true;
     let cancelled = false;
+    registerWebPlatform();
     if (!loadPromise) loadPromise = DataLayer.load((m) => setStatus(m));
     loadPromise
       .then(() => {

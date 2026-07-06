@@ -1,7 +1,10 @@
-import { geoArea, geoCentroid } from "d3";
+import { geoArea, geoCentroid } from "d3-geo";
 import { feature } from "topojson-client";
 import type { Feature, Polygon, Position } from "geojson";
-import { DATA_KEY, REST_URL, TOPO_URL, EXTRA_SOVEREIGN, type Country } from "@geobean/core";
+import { DATA_KEY, REST_URL, TOPO_URL } from "./constants";
+import { EXTRA_SOVEREIGN } from "./modes";
+import type { Country } from "./types";
+import { getKVStorage } from "./platform";
 
 // The mledoze/countries record shape, loosely typed to what we read.
 interface RawMeta {
@@ -33,8 +36,6 @@ interface CacheBlob {
   t: number;
 }
 
-const hasStorage = () => typeof window !== "undefined" && !!window.localStorage;
-
 /**
  * Geographic centroid ([lng, lat]) of a feature's largest polygon. For a plain
  * Polygon this is just its centroid; for a MultiPolygon it picks the biggest
@@ -63,10 +64,11 @@ export function largestPolygonCentroid(feature: Feature): [number, number] {
 }
 
 /**
- * Fetch + join TopoJSON geometry with mledoze country metadata, cache it in
- * localStorage, and retain the raw topology (the Continent Builder dissolves the
- * placeable set into one silhouette via topojson.merge, which needs the arcs).
- * A browser-only singleton — call load() from a client component.
+ * Fetch + join TopoJSON geometry with mledoze country metadata, cache it via
+ * the platform's KVStorage, and retain the raw topology (the Continent Builder
+ * dissolves the placeable set into one silhouette via topojson.merge, which
+ * needs the arcs). A singleton — call load() once the platform has registered
+ * storage.
  */
 export const DataLayer = {
   topo: null as Topo | null, // raw topology, retained for merge/silhouette
@@ -82,7 +84,7 @@ export const DataLayer = {
 
   async load(onStatus?: (msg: string) => void): Promise<{ fromCache: boolean }> {
     // 1) Try cache first.
-    const cached = this._readCache();
+    const cached = await this._readCache();
     if (cached) {
       onStatus?.("Loaded from cache");
       this._hydrate(cached.topo, cached.meta);
@@ -100,7 +102,7 @@ export const DataLayer = {
       }),
     ]);
     this._hydrate(topo, meta);
-    this._writeCache(topo, meta);
+    await this._writeCache(topo, meta);
     return { fromCache: false };
   },
 
@@ -190,10 +192,11 @@ export const DataLayer = {
     this.countries = keep;
   },
 
-  _readCache(): CacheBlob | null {
-    if (!hasStorage()) return null;
+  async _readCache(): Promise<CacheBlob | null> {
+    const kv = getKVStorage();
+    if (!kv) return null;
     try {
-      const raw = JSON.parse(localStorage.getItem(DATA_KEY) || "null");
+      const raw = JSON.parse((await kv.get(DATA_KEY)) || "null");
       if (raw && raw.topo && raw.meta && Array.isArray(raw.meta)) return raw as CacheBlob;
     } catch {
       /* ignore */
@@ -201,10 +204,11 @@ export const DataLayer = {
     return null;
   },
 
-  _writeCache(topo: Topo, meta: RawMeta[]): void {
-    if (!hasStorage()) return;
+  async _writeCache(topo: Topo, meta: RawMeta[]): Promise<void> {
+    const kv = getKVStorage();
+    if (!kv) return;
     try {
-      localStorage.setItem(DATA_KEY, JSON.stringify({ topo, meta, t: Date.now() }));
+      await kv.set(DATA_KEY, JSON.stringify({ topo, meta, t: Date.now() }));
     } catch {
       /* dataset too big for quota — fine, refetch next time */
     }

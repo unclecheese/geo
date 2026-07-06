@@ -1,4 +1,4 @@
-import { useAtlasStore } from "@/store/atlas-store";
+import { useAtlasStore } from "@geobean/core";
 
 /**
  * True once zustand has rehydrated persisted state from localStorage. Settings-

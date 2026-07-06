@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MODES, Logic } from "@geobean/core";
-import { DataLayer } from "@/lib/data-layer";
-import { useAtlasStore } from "@/store/atlas-store";
+import { MODES, Logic, DataLayer, useAtlasStore } from "@geobean/core";
 import { useBordersStore } from "@/store/borders-store";
 import { useData } from "@/components/DataProvider";
 import { FrameView } from "@/components/FrameView";
