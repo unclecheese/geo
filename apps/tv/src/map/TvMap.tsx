@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { Canvas, Fill, Group, Path, Rect, Line, Circle } from "@shopify/react-native-skia";
+import { memo, useMemo } from "react";
+import { Canvas, Fill, Group, Path, Rect } from "@shopify/react-native-skia";
 import { geoEqualEarth } from "d3-geo";
 import { DataLayer, type TinyBox, type MapTransform } from "@geobean/core";
 import { theme } from "../theme";
@@ -28,17 +28,20 @@ export interface TvMapProps {
   transform: MapTransform;
   paints: Map<string, PaintKind>;
   boxes: TinyBox[];
-  cursor: { x: number; y: number } | null;
 }
 
 /**
  * Full-screen Skia world map. Country paths are projected once (PROJ is fixed);
  * zoom/pan is a cheap transform on the group rather than a re-projection. The
  * border stroke uses `strokeWidth = 1 / k` so hairlines stay ~1px on screen at
- * any zoom — the same constant-width trick the web SVG uses. The cursor
- * crosshair is drawn outside the group (screen space) so it isn't scaled.
+ * any zoom — the same constant-width trick the web SVG uses.
+ *
+ * `memo`'d, and deliberately owns no cursor: the crosshair lives in a separate
+ * CursorOverlay Canvas so pan samples repaint only that overlay, never this
+ * ~470-node path tree. This Canvas re-renders only when transform/paints/boxes
+ * actually change (paint, frame, zoom, pan) — not on cursor motion.
  */
-export function TvMap({ transform, paints, boxes, cursor }: TvMapProps) {
+function TvMapImpl({ transform, paints, boxes }: TvMapProps) {
   const { k, tx, ty } = transform;
   const paths = useMemo(() => buildCountryPaths(PROJ, DataLayer.featureById), []);
   const ids = useMemo(() => Array.from(paths.keys()), [paths]);
@@ -83,15 +86,8 @@ export function TvMap({ transform, paints, boxes, cursor }: TvMapProps) {
           />
         ))}
       </Group>
-      {/* Cursor crosshair — screen space, so it stays a fixed size. Task 11
-          drives the `cursor` prop; here we just render it when present. */}
-      {cursor && (
-        <Group>
-          <Line p1={{ x: cursor.x, y: 0 }} p2={{ x: cursor.x, y: 1080 }} color={theme.brass} strokeWidth={1} />
-          <Line p1={{ x: 0, y: cursor.y }} p2={{ x: 1920, y: cursor.y }} color={theme.brass} strokeWidth={1} />
-          <Circle cx={cursor.x} cy={cursor.y} r={10} style="stroke" color={theme.brass} strokeWidth={2} />
-        </Group>
-      )}
     </Canvas>
   );
 }
+
+export const TvMap = memo(TvMapImpl);

@@ -15,7 +15,7 @@ export function MapProbeScreen() {
   }, []);
   return (
     <View style={{ flex: 1 }}>
-      <TvMap transform={{ k: 1, tx: 0, ty: 0 }} paints={new Map()} boxes={boxes} cursor={null} />
+      <TvMap transform={{ k: 1, tx: 0, ty: 0 }} paints={new Map()} boxes={boxes} />
     </View>
   );
 }

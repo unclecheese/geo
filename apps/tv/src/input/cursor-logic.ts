@@ -5,8 +5,13 @@ export type CursorState = { x: number; y: number; lastSample: { x: number; y: nu
 export type PanSample = { state: "Began" | "Changed" | "Ended"; x: number; y: number };
 export type ClickState = { pendingSince: number | null };
 
-/** Tunable single source for Task 18's on-device calibration pass. */
-export const CURSOR_GAIN = 1.6;
+/**
+ * Pan-delta → cursor-px multiplier. The fork's pan body is a cumulative
+ * translation in ~screen points, so 1.0 is a mouse-like 1:1 mapping; 1.6
+ * over-amplified each sample into a visible jump. This is the on-device
+ * tunable — nudge it up for a faster cursor, down for finer control.
+ */
+export const CURSOR_GAIN = 1.0;
 export const DOUBLE_CLICK_MS = 250;
 
 function clamp(v: number, max: number): number {

@@ -13,6 +13,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Logic, DataLayer, suggest, useBordersStore, type Country } from "@geobean/core";
 import type { RootStackParamList } from "../navigation";
 import { TvFrame } from "../map/TvFrame";
+import { useMenuButtonBack } from "../input/useMenuButtonBack";
 import { theme } from "../theme";
 import { fonts } from "../fonts";
 
@@ -52,6 +53,9 @@ export function BordersQuizScreen() {
   useEffect(() => {
     if (finished) nav.navigate("Menu");
   }, [finished, nav]);
+
+  // Menu/Back pops to Menu (unmount runs the quit() cleanup) instead of exiting.
+  useMenuButtonBack(() => nav.goBack());
 
   const nums = shown.map((_, i) => i + 1); // badge numbers 1..n
 

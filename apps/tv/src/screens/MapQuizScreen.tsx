@@ -6,7 +6,9 @@ import { DataLayer, pickCountryAt, setMapPort, useQuizStore } from "@geobean/cor
 import type { RootStackParamList } from "../navigation";
 import { createTvMapController, type TvMapState } from "../map/tv-map-controller";
 import { TvMap, PROJ } from "../map/TvMap";
+import { CursorOverlay, type CursorOverlayHandle } from "../map/CursorOverlay";
 import { useRemoteInput } from "../input/useRemoteInput";
+import { useMenuButtonBack } from "../input/useMenuButtonBack";
 import { Scorebar } from "../components/Scorebar";
 import { HintPanel } from "../components/HintPanel";
 import { RevealCard } from "../components/RevealCard";
@@ -48,7 +50,13 @@ export function MapQuizScreen() {
     boxes: [],
     arrow: null,
   }));
-  const [cursor, setCursor] = useState(CURSOR_START);
+  // The cursor is deliberately NOT React state: setting state on every pan
+  // sample re-rendered this screen and the ~470-node map path tree, which
+  // batched into a delay-then-jump. Instead the live position lives in a ref
+  // (read at click time) and the crosshair is pushed imperatively into the
+  // CursorOverlay, so a pan sample repaints only that 3-node overlay Canvas.
+  const cursorRef = useRef({ ...CURSOR_START });
+  const overlayRef = useRef<CursorOverlayHandle>(null);
 
   // Register the port + subscribe to its visual state, and start the session.
   // Cleanup unregisters the port and quits the session so a re-entry starts
@@ -83,9 +91,19 @@ export function MapQuizScreen() {
   const boxesRef = useRef(mapState.boxes);
   boxesRef.current = mapState.boxes;
 
+  // Push the crosshair into the overlay whenever cursor mode turns on/off:
+  // show it at the ref's current spot when active, clear it otherwise (reveal
+  // up, name mode, finished). Motion updates come through onCursor below.
+  useEffect(() => {
+    overlayRef.current?.set(cursorMode ? { ...cursorRef.current } : null);
+  }, [cursorMode]);
+
   useRemoteInput({
     enabled: cursorMode,
-    onCursor: setCursor,
+    onCursor: (c) => {
+      cursorRef.current = c;
+      overlayRef.current?.set(c);
+    },
     onSingleClick: (c) => {
       const hit = pickCountryAt(ctl.screenToProjected(c), DataLayer.countries, boxesRef.current, PROJ);
       if (hit) useQuizStore.getState().handleMapSelect(hit);
@@ -102,6 +120,10 @@ export function MapQuizScreen() {
     onPlayPause: () => useQuizStore.getState().useHint(),
   });
 
+  // Menu/Back pops to the Menu screen (unmount runs the quit() cleanup above)
+  // rather than quitting the app.
+  useMenuButtonBack(() => nav.goBack());
+
   // Round over → Results.
   useEffect(() => {
     if (finished) nav.navigate("Results");
@@ -113,8 +135,8 @@ export function MapQuizScreen() {
         transform={mapState.transform}
         paints={mapState.paints}
         boxes={mapState.boxes}
-        cursor={cursorMode ? cursor : null}
       />
+      <CursorOverlay ref={overlayRef} />
 
       {current?.mode === "find" && !answered && (
         <View style={styles.prompt} pointerEvents="none">

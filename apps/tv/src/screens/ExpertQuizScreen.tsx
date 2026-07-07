@@ -5,6 +5,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { DataLayer, useQuizStore } from "@geobean/core";
 import type { RootStackParamList } from "../navigation";
+import { useMenuButtonBack } from "../input/useMenuButtonBack";
 import { Scorebar } from "../components/Scorebar";
 import { RevealCard } from "../components/RevealCard";
 import { ChoicesGrid } from "../components/ChoicesGrid";
@@ -36,6 +37,9 @@ export function ExpertQuizScreen() {
   useTVEventHandler((event: HWEvent) => {
     if (event.eventType === "playPause") useQuizStore.getState().useHint();
   });
+
+  // Menu/Back pops to Menu (unmount runs the quit() cleanup) instead of exiting.
+  useMenuButtonBack(() => nav.goBack());
 
   const current = useQuizStore((s) => s.current);
   const answered = useQuizStore((s) => s.answered);
