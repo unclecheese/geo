@@ -3,12 +3,13 @@ import { View, Text, StyleSheet } from "react-native";
 import { useTVEventHandler, type HWEvent } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useAtlasStore, useQuizStore } from "@geobean/core";
+import { DataLayer, useQuizStore } from "@geobean/core";
 import type { RootStackParamList } from "../navigation";
 import { Scorebar } from "../components/Scorebar";
 import { RevealCard } from "../components/RevealCard";
 import { ChoicesGrid } from "../components/ChoicesGrid";
 import { FlagImage } from "../components/FlagImage";
+import { TypedAnswer } from "../components/TypedAnswer";
 import { theme } from "../theme";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -20,20 +21,14 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * mounts `useRemoteInput` (that hook drives the map cursor/pan), so there's no
  * double-fire risk with the bare `useTVEventHandler` below — it's the only
  * playPause listener on this screen.
- *
- * TODO(16): remove — typed expert answers arrive in Task 16. Until then, force
- * easy (MC) for this session only, same session-scoped override MapQuizScreen
- * uses, since difficult mode has no TextInput yet and would be unanswerable.
  */
 export function ExpertQuizScreen() {
   const nav = useNavigation<Nav>();
 
   useEffect(() => {
-    useAtlasStore.getState().setQuizDifficultyOverride("easy");
     useQuizStore.getState().start();
     return () => {
       useQuizStore.getState().quit();
-      useAtlasStore.getState().setQuizDifficultyOverride(null);
     };
   }, []);
 
@@ -48,6 +43,7 @@ export function ExpertQuizScreen() {
   const choices = useQuizStore((s) => s.choices);
   const choiceResult = useQuizStore((s) => s.choiceResult);
   const eliminatedIds = useQuizStore((s) => s.eliminatedIds);
+  const revealedCount = useQuizStore((s) => s.revealedCount);
 
   useEffect(() => {
     if (finished) nav.navigate("Results");
@@ -78,6 +74,18 @@ export function ExpertQuizScreen() {
             eliminatedIds={eliminatedIds}
             onChoose={(c) => useQuizStore.getState().handleChoice(c)}
             labelFor={current.mode === "capital" ? (c) => c.capital || "—" : undefined}
+          />
+        </View>
+      )}
+
+      {current && choices.length === 0 && !answered && (
+        <View style={styles.typedBand}>
+          <TypedAnswer
+            mode={current.mode === "capital" ? "capital" : "name"}
+            item={current.item}
+            pool={DataLayer.countries}
+            revealedCount={revealedCount}
+            onSubmit={(t) => useQuizStore.getState().handleTyped(t)}
           />
         </View>
       )}
@@ -121,6 +129,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: "center",
+    zIndex: 20,
+  },
+  typedBand: {
+    position: "absolute",
+    bottom: 80,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    paddingHorizontal: 64,
     zIndex: 20,
   },
 });

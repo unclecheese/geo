@@ -72,11 +72,6 @@ export function MenuScreen() {
     if (set.has(id)) set.delete(id);
     else set.add(id);
     const nextModes = set.size ? [...set] : [id];
-    // TODO(16): map difficult (hangman) isn't built yet, so a map session must
-    // never start in difficult — MapQuizScreen forces a session-scoped
-    // quizDifficultyOverride instead of mutating (and persisting) this
-    // setting. Don't reintroduce a quizDifficulty write here (see
-    // difficultDisabled below for the input-side gate).
     setSettings({ modes: nextModes });
   };
 
@@ -97,13 +92,6 @@ export function MenuScreen() {
   };
 
   const setQuizDifficulty = (d: QuizDifficulty) => setSettings({ quizDifficulty: d });
-
-  // TODO(16): difficult name mode (typed/hangman) isn't built yet on TV — only
-  // easy (multiple-choice) works for map modes until Task 16 lands the typed
-  // path. Gate the chip off while the selection is map-group so a player can't
-  // pick a combination MapQuizScreen can't yet answer.
-  const mapModeSelected = settings.modes.some((m) => MODES[m]?.group === "map");
-  const difficultDisabled = hydrated && mapModeSelected;
 
   // Normalise the mode set to the family's canonical selection, then navigate.
   const startMap = () => {
@@ -167,13 +155,9 @@ export function MenuScreen() {
             label="Difficult"
             active={hydrated && settings.quizDifficulty === "difficult"}
             onPress={() => setQuizDifficulty("difficult")}
-            disabled={difficultDisabled}
           />
         </View>
-        <Text style={styles.hint}>
-          Easy = multiple choice. Difficult = type the answer.
-          {difficultDisabled ? " (Difficult isn't available for map modes yet.)" : ""}
-        </Text>
+        <Text style={styles.hint}>Easy = multiple choice. Difficult = type the answer.</Text>
       </Section>
 
       <Section title="Length">

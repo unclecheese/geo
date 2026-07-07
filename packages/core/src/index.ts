@@ -1,4 +1,5 @@
 export { Logic } from "./logic";
+export { suggest, type SuggestOpts } from "./suggest";
 export { MODES, EXTRA_SOVEREIGN } from "./modes";
 export * from "./constants";
 export * from "./types";

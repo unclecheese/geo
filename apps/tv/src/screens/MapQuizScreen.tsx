@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { DataLayer, pickCountryAt, setMapPort, useAtlasStore, useQuizStore } from "@geobean/core";
+import { DataLayer, pickCountryAt, setMapPort, useQuizStore } from "@geobean/core";
 import type { RootStackParamList } from "../navigation";
 import { createTvMapController, type TvMapState } from "../map/tv-map-controller";
 import { TvMap, PROJ } from "../map/TvMap";
@@ -11,6 +11,7 @@ import { Scorebar } from "../components/Scorebar";
 import { HintPanel } from "../components/HintPanel";
 import { RevealCard } from "../components/RevealCard";
 import { ChoicesGrid } from "../components/ChoicesGrid";
+import { TypedAnswer } from "../components/TypedAnswer";
 import { theme } from "../theme";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -51,21 +52,14 @@ export function MapQuizScreen() {
   // Register the port + subscribe to its visual state, and start the session.
   // Cleanup unregisters the port and quits the session so a re-entry starts
   // clean (no stale paints, no double timer).
-  //
-  // TODO(16): remove the difficulty override — map difficult (hangman) arrives
-  // in Task 16. Until then, force easy for this session only (find ignores
-  // difficulty anyway; name gets MC instead of an unbuilt typed UI). Session-
-  // scoped and never persisted — see quizDifficultyOverride in atlas-store.ts.
   useEffect(() => {
     setMapPort(ctl);
     const unbind = ctl.bind(setMapState);
-    useAtlasStore.getState().setQuizDifficultyOverride("easy");
     useQuizStore.getState().start();
     return () => {
       unbind();
       setMapPort(null);
       useQuizStore.getState().quit();
-      useAtlasStore.getState().setQuizDifficultyOverride(null);
     };
   }, [ctl]);
 
@@ -78,6 +72,7 @@ export function MapQuizScreen() {
   const choices = useQuizStore((s) => s.choices);
   const choiceResult = useQuizStore((s) => s.choiceResult);
   const eliminatedIds = useQuizStore((s) => s.eliminatedIds);
+  const revealedCount = useQuizStore((s) => s.revealedCount);
 
   const cursorMode = mode === "find" && !answered;
 
@@ -150,6 +145,18 @@ export function MapQuizScreen() {
         </View>
       )}
 
+      {current?.mode === "name" && choices.length === 0 && !answered && (
+        <View style={styles.typedBand}>
+          <TypedAnswer
+            mode="name"
+            item={current.item}
+            pool={DataLayer.countries}
+            revealedCount={revealedCount}
+            onSubmit={(t) => useQuizStore.getState().handleTyped(t)}
+          />
+        </View>
+      )}
+
       {answered && reveal && (
         <RevealCard
           reveal={reveal}
@@ -186,6 +193,14 @@ const styles = StyleSheet.create({
   },
   promptName: { color: theme.cream, fontSize: 40, fontFamily: "Georgia", fontWeight: "700" },
   choicesBand: {
+    position: "absolute",
+    bottom: 48,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 20,
+  },
+  typedBand: {
     position: "absolute",
     bottom: 48,
     left: 0,

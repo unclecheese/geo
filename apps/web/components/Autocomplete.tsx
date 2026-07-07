@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Logic } from "@geobean/core";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { suggest } from "@geobean/core";
+import type { Country } from "@geobean/core";
 
 interface AutocompleteProps {
   candidates: string[];
@@ -15,7 +16,14 @@ export function Autocomplete({ candidates, onSubmit }: AutocompleteProps) {
   const [active, setActive] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const items = Logic.suggest(value, candidates, 6);
+  // Autocomplete deals in plain candidate strings; wrap each as a name-only
+  // Country so the shared core ranker (prefix → levenshtein) can order them, the
+  // same primitive TV's TypedAnswer uses. Reading `.name` back yields strings.
+  const pool = useMemo(
+    () => candidates.map((name) => ({ name } as Country)),
+    [candidates]
+  );
+  const items = suggest(value, pool, { limit: 6 }).map((c) => c.name);
   const listOpen = items.length > 0;
 
   useEffect(() => {
