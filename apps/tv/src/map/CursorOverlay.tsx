@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
-import { Canvas, Group, Line, Circle } from "@shopify/react-native-skia";
+import { Canvas, Group, Circle } from "@shopify/react-native-skia";
 import { StyleSheet } from "react-native";
 import { theme } from "../theme";
 
@@ -27,8 +27,6 @@ export const CursorOverlay = forwardRef<CursorOverlayHandle>(function CursorOver
   return (
     <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
       <Group>
-        <Line p1={{ x: cursor.x, y: 0 }} p2={{ x: cursor.x, y: 1080 }} color={theme.brass} strokeWidth={1} />
-        <Line p1={{ x: 0, y: cursor.y }} p2={{ x: 1920, y: cursor.y }} color={theme.brass} strokeWidth={1} />
         <Circle cx={cursor.x} cy={cursor.y} r={10} style="stroke" color={theme.brass} strokeWidth={2} />
       </Group>
     </Canvas>
