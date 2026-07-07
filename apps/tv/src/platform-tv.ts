@@ -4,15 +4,17 @@
 // ("Native module is null"). This breaks nothing tsc/vitest can see. Do not bump
 // past 2.x without confirming tvOS support is restored in the release.
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { setKVStorage, useAtlasStore } from "@geobean/core";
+import { setKVStorage, setFxPort, useAtlasStore } from "@geobean/core";
+import { fxTv } from "./fx-tv";
 
 let registered = false;
 
 /**
  * Wire the tvOS platform seams into core: an AsyncStorage-backed KVStorage, then
  * an explicit persist rehydrate (the store ships with `skipHydration: true` so it
- * waits for storage to exist before reading). fx stays the default no-op until
- * Task 18. Idempotent — safe to call from every screen mount.
+ * waits for storage to exist before reading), then the tvOS FxPort (silent audio
+ * cues + a real Skia confetti burst — see fx-tv.ts for the sound go/no-go).
+ * Idempotent — safe to call from every screen mount.
  */
 export function registerTvPlatform(): void {
   if (registered) return;
@@ -22,5 +24,6 @@ export function registerTvPlatform(): void {
     set: (k, v) => AsyncStorage.setItem(k, v),
     remove: (k) => AsyncStorage.removeItem(k),
   });
+  setFxPort(fxTv);
   void useAtlasStore.persist.rehydrate();
 }

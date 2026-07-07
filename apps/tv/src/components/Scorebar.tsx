@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet } from "react-native";
 import { Logic, useQuizStore } from "@geobean/core";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 
 /**
  * Top-strip HUD for the map quiz: question counter, score, streak and elapsed
@@ -55,7 +56,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     minWidth: 92,
   },
-  value: { color: theme.cream, fontSize: 30, fontFamily: "Georgia", fontWeight: "700" },
+  value: { color: theme.cream, fontSize: 30, fontFamily: fonts.displaySemi },
   valueAccent: { color: theme.brass },
   label: {
     color: theme.creamDim,
@@ -63,5 +64,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: 2,
     fontVariant: ["small-caps"],
+    fontFamily: fonts.bodyMedium,
   },
 });

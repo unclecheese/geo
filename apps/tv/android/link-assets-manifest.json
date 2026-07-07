@@ -1,0 +1,25 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "assets/fonts/Fraunces-Regular.ttf",
+      "sha1": "bfbc44cb3ece44cef19737d8b7c7d99c1afe2d73"
+    },
+    {
+      "path": "assets/fonts/Fraunces-SemiBold.ttf",
+      "sha1": "41d6dac199c48b7a760b70c1fe96e94c65d061ce"
+    },
+    {
+      "path": "assets/fonts/Spectral-Medium.ttf",
+      "sha1": "d3a345a2f135efe87d84183024e77cb734a936b9"
+    },
+    {
+      "path": "assets/fonts/Spectral-Regular.ttf",
+      "sha1": "ebe00acfa7061ceae902a2c0d8a88f0717152103"
+    },
+    {
+      "path": "assets/fonts/Spectral-SemiBold.ttf",
+      "sha1": "b74f667f6fb6d81fee8ed58b1183e5728337de23"
+    }
+  ]
+}

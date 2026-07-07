@@ -1,6 +1,7 @@
 import { View, Text, Pressable, StyleSheet, type PressableStateCallbackType } from "react-native";
 import type { Country, ChoiceResult } from "@geobean/core";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 
 interface ChoicesGridProps {
   choices: Country[];
@@ -108,8 +109,7 @@ const styles = StyleSheet.create({
   label: {
     color: theme.ink,
     fontSize: 26,
-    fontFamily: "Georgia",
-    fontWeight: "700",
+    fontFamily: fonts.bodySemi,
     textAlign: "center",
   },
   labelEliminated: {

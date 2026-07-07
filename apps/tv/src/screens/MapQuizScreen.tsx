@@ -13,6 +13,7 @@ import { RevealCard } from "../components/RevealCard";
 import { ChoicesGrid } from "../components/ChoicesGrid";
 import { TypedAnswer } from "../components/TypedAnswer";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -191,7 +192,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     fontVariant: ["small-caps"],
   },
-  promptName: { color: theme.cream, fontSize: 40, fontFamily: "Georgia", fontWeight: "700" },
+  promptName: { color: theme.cream, fontSize: 40, fontFamily: fonts.displaySemi },
   choicesBand: {
     position: "absolute",
     bottom: 48,

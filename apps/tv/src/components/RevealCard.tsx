@@ -1,6 +1,7 @@
 import { View, Text, Pressable, StyleSheet, type PressableStateCallbackType } from "react-native";
 import { Logic, type RevealState } from "@geobean/core";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 
 /**
  * Post-grade feedback overlay for the map quiz — the FOCUS-mode counterpart to
@@ -89,8 +90,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   verdict: { fontSize: 26, fontWeight: "700", letterSpacing: 1, marginBottom: 8 },
-  name: { color: theme.ink, fontSize: 52, fontFamily: "Georgia", fontWeight: "700" },
-  cap: { color: theme.inkDim, fontSize: 24, fontFamily: "Georgia", marginTop: 6 },
+  name: { color: theme.ink, fontSize: 52, fontFamily: fonts.displaySemi },
+  cap: { color: theme.inkDim, fontSize: 24, fontFamily: fonts.body, marginTop: 6 },
   meta: { color: theme.inkFaint, fontSize: 18, marginTop: 14 },
   row: { flexDirection: "row", gap: 20, marginTop: 32 },
   btnPrimary: {

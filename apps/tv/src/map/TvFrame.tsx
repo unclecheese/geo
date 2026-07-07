@@ -14,6 +14,7 @@ import { geoBounds, geoMercator, geoPath } from "d3-geo";
 import type { Feature } from "geojson";
 import { Logic, DataLayer, type Country } from "@geobean/core";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 import { SkiaPathContext } from "./SkiaPathContext";
 
 interface TvFrameProps {
@@ -23,11 +24,12 @@ interface TvFrameProps {
   height?: number;
 }
 
-// System-font Skia typefaces (Task 18 swaps in the bundled serif). matchFont is
-// synchronous — it resolves against the platform font manager, so unlike useFont
-// there's no null-loading state to guard.
-const LABEL_FONT: SkFont = matchFont({ fontFamily: "Georgia", fontSize: 26, fontWeight: "700" });
-const BADGE_FONT: SkFont = matchFont({ fontFamily: "Helvetica", fontSize: 22, fontWeight: "700" });
+// Bundled-serif Skia typefaces. matchFont is synchronous — it resolves against
+// the platform font manager (which includes the UIAppFonts-registered TTFs), so
+// unlike useFont there's no null-loading state to guard. The target name reads as
+// a display heading; the numeric badges stay in the same family for a coherent look.
+const LABEL_FONT: SkFont = matchFont({ fontFamily: fonts.displaySemi, fontSize: 26 });
+const BADGE_FONT: SkFont = matchFont({ fontFamily: fonts.displaySemi, fontSize: 22 });
 
 const BADGE_R = 20;
 

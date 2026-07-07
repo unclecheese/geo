@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet } from "react-native";
 import { DataLayer } from "@geobean/core";
 import { registerTvPlatform } from "../platform-tv";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 
 // Module-level guard so a remount reuses the in-flight load rather than
 // racing a second fetch — mirrors web's DataProvider.
@@ -82,12 +83,11 @@ const styles = StyleSheet.create({
   h2: {
     color: theme.cream,
     fontSize: 40,
-    fontWeight: "700",
-    fontFamily: "Georgia",
+    fontFamily: fonts.displaySemi,
     marginBottom: 16,
     textAlign: "center",
   },
-  status: { color: theme.creamDim, fontSize: 22, fontFamily: "Georgia", textAlign: "center" },
+  status: { color: theme.creamDim, fontSize: 22, fontFamily: fonts.body, textAlign: "center" },
   retry: {
     marginTop: 32,
     backgroundColor: theme.parchment,

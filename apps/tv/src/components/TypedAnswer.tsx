@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Logic, suggest, type Country } from "@geobean/core";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 
 /**
  * Difficult-mode typed answering for TV (FOCUS mode). Focusing the TextInput
@@ -113,7 +114,7 @@ const styles = StyleSheet.create({
   mask: {
     color: theme.cream,
     fontSize: 36,
-    fontFamily: "Georgia",
+    fontFamily: fonts.body,
     letterSpacing: 4,
   },
   input: {
@@ -124,7 +125,7 @@ const styles = StyleSheet.create({
     borderColor: theme.hair,
     color: theme.ink,
     fontSize: 32,
-    fontFamily: "Georgia",
+    fontFamily: fonts.body,
     paddingVertical: 16,
     paddingHorizontal: 24,
   },

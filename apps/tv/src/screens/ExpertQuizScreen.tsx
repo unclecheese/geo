@@ -11,6 +11,7 @@ import { ChoicesGrid } from "../components/ChoicesGrid";
 import { FlagImage } from "../components/FlagImage";
 import { TypedAnswer } from "../components/TypedAnswer";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -117,7 +118,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     fontVariant: ["small-caps"],
   },
-  promptName: { color: theme.cream, fontSize: 48, fontFamily: "Georgia", fontWeight: "700" },
+  promptName: { color: theme.cream, fontSize: 48, fontFamily: fonts.displaySemi },
   flagWrap: {
     position: "absolute",
     top: 110,

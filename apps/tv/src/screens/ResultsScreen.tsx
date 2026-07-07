@@ -4,6 +4,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Logic, useQuizStore } from "@geobean/core";
 import type { RootStackParamList } from "../navigation";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -110,8 +111,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 56,
     alignItems: "center",
   },
-  title: { color: theme.ink, fontSize: 48, fontFamily: "Georgia", fontWeight: "700" },
-  sub: { color: theme.inkDim, fontSize: 22, fontFamily: "Georgia", marginTop: 10 },
+  title: { color: theme.ink, fontSize: 48, fontFamily: fonts.displaySemi },
+  sub: { color: theme.inkDim, fontSize: 22, fontFamily: fonts.body, marginTop: 10 },
   stats: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -130,7 +131,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     minWidth: 140,
   },
-  statValue: { color: theme.ink, fontSize: 38, fontFamily: "Georgia", fontWeight: "700" },
+  statValue: { color: theme.ink, fontSize: 38, fontFamily: fonts.displaySemi },
   statAccent: { color: theme.brass },
   statGood: { color: theme.good },
   statLabel: {
@@ -139,6 +140,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: 4,
     fontVariant: ["small-caps"],
+    fontFamily: fonts.bodyMedium,
   },
   row: { flexDirection: "row", gap: 20 },
   btnPrimary: {
@@ -159,6 +161,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 36,
   },
   btnSecondaryFocused: { borderColor: theme.brass, transform: [{ scale: 1.08 }] },
-  btnTextPrimary: { color: theme.cream, fontSize: 24, fontWeight: "700" },
-  btnTextSecondary: { color: theme.ink, fontSize: 24, fontWeight: "700" },
+  btnTextPrimary: { color: theme.cream, fontSize: 24, fontFamily: fonts.bodySemi },
+  btnTextSecondary: { color: theme.ink, fontSize: 24, fontFamily: fonts.bodySemi },
 });

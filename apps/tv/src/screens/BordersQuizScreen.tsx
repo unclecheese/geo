@@ -14,6 +14,7 @@ import { Logic, DataLayer, suggest, useBordersStore, type Country } from "@geobe
 import type { RootStackParamList } from "../navigation";
 import { TvFrame } from "../map/TvFrame";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -334,8 +335,8 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.bg },
   content: { alignItems: "center", paddingTop: 96, paddingBottom: 80, paddingHorizontal: 64 },
 
-  promptLabel: { color: theme.creamDim, fontSize: 20, letterSpacing: 2, fontVariant: ["small-caps"] },
-  promptName: { color: theme.cream, fontSize: 44, fontFamily: "Georgia", fontWeight: "700" },
+  promptLabel: { color: theme.creamDim, fontSize: 20, letterSpacing: 2, fontVariant: ["small-caps"], fontFamily: fonts.bodyMedium },
+  promptName: { color: theme.cream, fontSize: 44, fontFamily: fonts.displaySemi },
   promptSub: { color: theme.creamDim, fontSize: 18, fontStyle: "italic", marginTop: 6, textAlign: "center" },
 
   frameWrap: { marginTop: 20, borderRadius: 12, overflow: "hidden" },
@@ -357,13 +358,13 @@ const styles = StyleSheet.create({
   candAssigned: { backgroundColor: theme.parchment2, borderColor: theme.brass },
   candPicked: { borderColor: theme.forest, transform: [{ scale: 1.04 }] },
   candFocused: { borderColor: theme.brass, transform: [{ scale: 1.06 }] },
-  candText: { color: theme.ink, fontSize: 24, fontFamily: "Georgia", fontWeight: "700" },
+  candText: { color: theme.ink, fontSize: 24, fontFamily: fonts.bodySemi },
   candTextAssigned: { color: theme.ink },
   candBadge: {
     color: theme.cream,
     backgroundColor: theme.oxblood,
     fontSize: 18,
-    fontWeight: "700",
+    fontFamily: fonts.bodySemi,
     width: 30,
     height: 30,
     borderRadius: 15,
@@ -386,7 +387,7 @@ const styles = StyleSheet.create({
   numChipOn: { backgroundColor: theme.oxblood, borderColor: theme.cream },
   numChipDisabled: { opacity: 0.4 },
   numChipFocused: { borderColor: theme.brass, transform: [{ scale: 1.08 }] },
-  numChipText: { color: theme.ink, fontSize: 28, fontWeight: "700" },
+  numChipText: { color: theme.ink, fontSize: 28, fontFamily: fonts.displaySemi },
   numChipTextOn: { color: theme.cream },
 
   /* difficult */
@@ -401,7 +402,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 8,
   },
-  blankNumText: { color: theme.cream, fontSize: 24, fontWeight: "700" },
+  blankNumText: { color: theme.cream, fontSize: 24, fontFamily: fonts.bodySemi },
   blankBody: { flex: 1, gap: 10 },
   blankInput: {
     width: "100%",
@@ -411,7 +412,7 @@ const styles = StyleSheet.create({
     borderColor: theme.hair,
     color: theme.ink,
     fontSize: 28,
-    fontFamily: "Georgia",
+    fontFamily: fonts.body,
     paddingVertical: 14,
     paddingHorizontal: 22,
   },
@@ -425,7 +426,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   suggestFocused: { borderColor: theme.brass, transform: [{ scale: 1.08 }] },
-  suggestText: { color: theme.ink, fontSize: 20, fontWeight: "600" },
+  suggestText: { color: theme.ink, fontSize: 20, fontFamily: fonts.bodySemi },
 
   /* submit */
   submit: {
@@ -438,7 +439,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   submitFocused: { borderColor: theme.cream, transform: [{ scale: 1.08 }] },
-  submitText: { color: theme.cream, fontSize: 26, fontWeight: "700" },
+  submitText: { color: theme.cream, fontSize: 26, fontFamily: fonts.bodySemi },
 
   /* reveal */
   reveal: {
@@ -452,9 +453,9 @@ const styles = StyleSheet.create({
     marginTop: 28,
   },
   revealVerdict: { fontSize: 26, fontWeight: "700", letterSpacing: 1 },
-  revealName: { color: theme.ink, fontSize: 40, fontFamily: "Georgia", fontWeight: "700", marginTop: 4 },
+  revealName: { color: theme.ink, fontSize: 40, fontFamily: fonts.displaySemi, marginTop: 4 },
   revealList: { flexDirection: "row", flexWrap: "wrap", gap: 16, justifyContent: "center", marginTop: 18 },
-  revealItem: { fontSize: 22, fontFamily: "Georgia", fontWeight: "600" },
+  revealItem: { fontSize: 22, fontFamily: fonts.bodySemi },
   nextBtn: {
     backgroundColor: theme.brass,
     borderRadius: 10,
@@ -465,7 +466,7 @@ const styles = StyleSheet.create({
     marginTop: 28,
   },
   nextBtnFocused: { borderColor: theme.ink, transform: [{ scale: 1.08 }] },
-  nextBtnText: { color: theme.cream, fontSize: 24, fontWeight: "700" },
+  nextBtnText: { color: theme.cream, fontSize: 24, fontFamily: fonts.bodySemi },
 
   /* scorebar */
   bar: { position: "absolute", top: 40, right: 56, flexDirection: "row", gap: 14, zIndex: 20 },
@@ -479,7 +480,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     minWidth: 92,
   },
-  pillValue: { color: theme.cream, fontSize: 30, fontFamily: "Georgia", fontWeight: "700" },
+  pillValue: { color: theme.cream, fontSize: 30, fontFamily: fonts.displaySemi },
   pillValueAccent: { color: theme.brass },
-  pillLabel: { color: theme.creamDim, fontSize: 14, letterSpacing: 1, marginTop: 2, fontVariant: ["small-caps"] },
+  pillLabel: { color: theme.creamDim, fontSize: 14, letterSpacing: 1, marginTop: 2, fontVariant: ["small-caps"], fontFamily: fonts.bodyMedium },
 });

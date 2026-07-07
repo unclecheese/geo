@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Animated, StyleSheet, Text } from "react-native";
 import { useToastStore } from "@geobean/core";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 
 /**
  * Non-focusable top-centre banner, the tvOS render of the shared toast store —
@@ -73,7 +74,7 @@ const styles = StyleSheet.create({
   text: {
     color: theme.cream,
     fontSize: 26,
-    fontFamily: "Georgia",
+    fontFamily: fonts.body,
     textAlign: "center",
   },
 });

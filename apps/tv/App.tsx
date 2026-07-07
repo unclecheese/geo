@@ -9,6 +9,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { LoadingGate } from './src/screens/LoadingGate';
 import { RootNavigator } from './src/navigation';
 import { TvToast } from './src/components/TvToast';
+import { TvConfetti } from './src/components/TvConfetti';
 
 export default function App() {
   return (
@@ -18,6 +19,9 @@ export default function App() {
         {/* One global toast renderer above the navigator — the quiz stores fire
             praise / "Not quite" / pool-warning toasts through the shared store. */}
         <TvToast />
+        {/* Full-screen confetti overlay, rung by the FxPort's confetti() on
+            milestones / completed borders rounds. */}
+        <TvConfetti />
       </LoadingGate>
     </NavigationContainer>
   );

@@ -19,6 +19,7 @@ import {
 } from "@geobean/core";
 import type { RootStackParamList } from "../navigation";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -185,6 +186,12 @@ export function MenuScreen() {
           <StartButton label="Borders ▸" onPress={startBorders} />
         </View>
       </Section>
+
+      <Section title="Progress">
+        <View style={styles.segRow}>
+          <Chip label="Your progress ▸" active={false} onPress={() => nav.navigate("Stats")} />
+        </View>
+      </Section>
     </ScrollView>
   );
 }
@@ -249,13 +256,13 @@ function StartButton({ label, onPress }: { label: string; onPress: () => void })
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.bg },
   content: { alignItems: "center", paddingVertical: 56, paddingHorizontal: 64 },
-  title: { color: theme.cream, fontSize: 64, fontWeight: "700", fontFamily: "Georgia" },
-  subtitle: { color: theme.creamDim, fontSize: 24, fontFamily: "Georgia", marginBottom: 40 },
+  title: { color: theme.cream, fontSize: 64, fontFamily: fonts.displaySemi },
+  subtitle: { color: theme.creamDim, fontSize: 24, fontFamily: fonts.body, marginBottom: 40 },
   section: { width: "100%", maxWidth: 1100, marginBottom: 32 },
   sectionTitle: {
     color: theme.cream,
     fontSize: 20,
-    fontWeight: "700",
+    fontFamily: fonts.displaySemi,
     letterSpacing: 1,
     marginBottom: 14,
     fontVariant: ["small-caps"],
@@ -271,7 +278,7 @@ const styles = StyleSheet.create({
   },
   chipActive: { backgroundColor: theme.parchment2, borderColor: theme.forest },
   chipFocused: { borderColor: theme.brass, transform: [{ scale: 1.08 }] },
-  chipText: { color: theme.inkDim, fontSize: 22, fontWeight: "600" },
+  chipText: { color: theme.inkDim, fontSize: 22, fontFamily: fonts.bodySemi },
   chipTextActive: { color: theme.ink },
   chipDisabled: { opacity: 0.4 },
   chipTextDisabled: { color: theme.inkFaint },
@@ -285,5 +292,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   startFocused: { borderColor: theme.cream, transform: [{ scale: 1.08 }] },
-  startText: { color: theme.cream, fontSize: 26, fontWeight: "700" },
+  startText: { color: theme.cream, fontSize: 26, fontFamily: fonts.bodySemi },
 });

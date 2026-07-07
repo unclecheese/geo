@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet } from "react-native";
 import type { Country } from "@geobean/core";
 import { theme } from "../theme";
+import { fonts } from "../fonts";
 
 /**
  * Bottom-left find-mode hint stack. Escalates with `hintLevel` (Play/Pause
@@ -53,5 +54,5 @@ const styles = StyleSheet.create({
     fontVariant: ["small-caps"],
     fontWeight: "700",
   },
-  hint: { color: theme.cream, fontSize: 24, fontFamily: "Georgia", marginTop: 4 },
+  hint: { color: theme.cream, fontSize: 24, fontFamily: fonts.body, marginTop: 4 },
 });
