@@ -131,23 +131,24 @@ describe("quiz-store: hints", () => {
     expect(useQuizStore.getState().eliminatedIds.length).toBe(3);
   });
 
-  it("typed name mode reveals the mask then letters, capped at letterCount + 1", () => {
+  it("typed name mode reveals the mask then letters, capped at hangmanReveals + 1", () => {
     seed("name", { choices: [] });
     const { useHint } = useQuizStore.getState();
     // First hint reveals the all-blank mask (revealedCount 1 = 0 letters shown).
     useHint();
     expect(useQuizStore.getState().revealedCount).toBe(1);
-    // "Italy" has 5 letters; letters shown = revealedCount - 1, so it caps at 6.
+    // "Italy" has 5 letters, but the first is never revealed (hangmanReveals
+    // = 4), so letters shown = revealedCount - 1 caps at 4 -> revealedCount 5.
     for (let i = 0; i < 10; i++) useHint();
-    expect(useQuizStore.getState().revealedCount).toBe(6);
+    expect(useQuizStore.getState().revealedCount).toBe(5);
   });
 
   it("typed capital mode reveals letters of the CAPITAL, not the country", () => {
     seed("capital", { choices: [] });
     const { useHint } = useQuizStore.getState();
     for (let i = 0; i < 20; i++) useHint();
-    // "Rome" has 4 letters; caps at letterCount + 1 (the all-blank mask step).
-    expect(useQuizStore.getState().revealedCount).toBe(5);
+    // "Rome" has 4 letters; hangmanReveals = 3, caps at revealedCount 4.
+    expect(useQuizStore.getState().revealedCount).toBe(4);
   });
 });
 

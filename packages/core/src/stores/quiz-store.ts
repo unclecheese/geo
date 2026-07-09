@@ -390,10 +390,11 @@ export const useQuizStore = create<QuizState>((set, get) => ({
 
     // Typed hangman: the answer stays fully hidden until the first hint. That
     // first press (revealedCount 0→1) shows the all-blank mask; each later press
-    // reveals one more letter. So displayed letters = revealedCount - 1, and the
-    // cap is letterCount + 1 (the terminal, all-letters state).
+    // reveals one more letter (never the first — see Logic.revealName). So
+    // displayed letters = revealedCount - 1, and the cap is hangmanReveals + 1
+    // (the terminal state: every revealable letter shown).
     const answer = hintTarget(item, mode);
-    const maxReveal = Logic.letterCount(answer) + 1;
+    const maxReveal = Logic.hangmanReveals(answer) + 1;
     if (state.revealedCount >= maxReveal) return;
     set({ revealedCount: state.revealedCount + 1 });
     fx().hint();

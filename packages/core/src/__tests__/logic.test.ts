@@ -134,10 +134,62 @@ describe("Logic.makeChoices", () => {
 });
 
 describe("Logic.revealName", () => {
-  it("reveals the first `count` letters and masks the rest, showing punctuation literally", () => {
-    expect(Logic.revealName("Chile", 0)).toBe("_ _ _ _ _");
-    expect(Logic.revealName("Chile", 2)).toBe("C h _ _ _");
-    expect(Logic.revealName("Costa Rica", 3)).toBe("C o s _ _   _ _ _ _");
+  // Letter positions actually shown, read off the mask (space-joined slots,
+  // one per source character — see revealName's non-letter handling below).
+  function revealedLetterIndices(name: string, count: number): Set<number> {
+    const mask = Logic.revealName(name, count);
+    const maskChars = mask.split(" ");
+    const shown = new Set<number>();
+    let letterIdx = 0;
+    let maskIdx = 0;
+    for (const ch of name) {
+      const slot = maskChars[maskIdx++];
+      if (/[a-zA-Z]/.test(ch)) {
+        if (slot !== "_") shown.add(letterIdx);
+        letterIdx++;
+      }
+    }
+    return shown;
+  }
+
+  const NAME = "Switzerland"; // 11 letters, no punctuation — clean for structural checks
+  const L = Logic.letterCount(NAME);
+
+  it("never reveals the first letter, even at or past the maximum count", () => {
+    const max = Logic.hangmanReveals(NAME);
+    expect(revealedLetterIndices(NAME, max).has(0)).toBe(false);
+    expect(revealedLetterIndices(NAME, max + 5).has(0)).toBe(false);
+  });
+
+  it("is stable: the revealed set only grows as count increases, and repeat calls agree", () => {
+    expect(Logic.revealName(NAME, 4)).toBe(Logic.revealName(NAME, 4));
+    let prev = revealedLetterIndices(NAME, 0);
+    for (let k = 1; k <= L + 2; k++) {
+      const cur = revealedLetterIndices(NAME, k);
+      for (const i of prev) expect(cur.has(i)).toBe(true);
+      prev = cur;
+    }
+  });
+
+  it("does not reveal strictly left-to-right", () => {
+    const order = Logic._revealOrder(NAME);
+    expect(order).not.toEqual(order.slice().sort((a, b) => a - b));
+  });
+
+  it("avoids revealing back-to-back adjacent letters on consecutive hints when possible", () => {
+    const order = Logic._revealOrder("Czechoslovakia"); // 14 letters, room to spare
+    let adjacent = 0;
+    for (let i = 1; i < order.length; i++) {
+      if (Math.abs(order[i] - order[i - 1]) === 1) adjacent++;
+    }
+    expect(adjacent).toBe(0);
+  });
+
+  it("keeps non-letters literal (spaces, hyphens, apostrophes)", () => {
+    expect(Logic.revealName("New Zealand", 0)).toBe("_ _ _   _ _ _ _ _ _ _");
+    const full = Logic.revealName("New Zealand", 20);
+    expect(full[0]).toBe("_"); // first letter still hidden at full reveal
+    expect(full).toContain("  "); // the mid-name space slot survives
   });
 });
 
@@ -182,6 +234,15 @@ describe("Logic.letterCount", () => {
     expect(Logic.letterCount("Chile")).toBe(5);
     expect(Logic.letterCount("Costa Rica")).toBe(9);
     expect(Logic.letterCount("Côte d'Ivoire")).toBe(10); // ô isn't [a-zA-Z], matching revealName's mask
+  });
+});
+
+describe("Logic.hangmanReveals", () => {
+  it("is letterCount - 1, floored at 0 (the first letter is never revealable)", () => {
+    expect(Logic.hangmanReveals("Chile")).toBe(4);
+    expect(Logic.hangmanReveals("Costa Rica")).toBe(8);
+    expect(Logic.hangmanReveals("")).toBe(0);
+    expect(Logic.hangmanReveals("I")).toBe(0);
   });
 });
 

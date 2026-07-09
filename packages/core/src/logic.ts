@@ -172,16 +172,23 @@ export const Logic = {
     return regions.length ? countries.filter((c) => regions.includes(c.region)) : countries.slice();
   },
 
-  // Hangman-style mask: reveal the first `count` alphabetic letters
-  // left-to-right, hide the rest as "_", but always show non-letters
-  // (spaces, hyphens, apostrophes) literally. Slots joined with a space.
+  // Hangman-style mask: reveal `count` alphabetic letters in a randomised
+  // order (see _revealOrder), hide the rest as "_", but always show
+  // non-letters (spaces, hyphens, apostrophes) literally. Slots joined with a
+  // space. The first letter (index 0) is never revealed, at any count — see
+  // _revealOrder. The order is a deterministic function of `name`, so the
+  // revealed set only grows as `count` increases: safe to call fresh on every
+  // render with no per-question stored state.
   revealName(name: string, count: number): string {
-    let shown = 0;
+    const order = Logic._revealOrder(name);
+    const clamped = Math.max(0, Math.min(count, order.length));
+    const revealed = new Set(order.slice(0, clamped));
+    let letterIdx = 0;
     const slots: string[] = [];
     for (const ch of name) {
       if (/[a-zA-Z]/.test(ch)) {
-        slots.push(shown < count ? ch : "_");
-        shown++;
+        slots.push(revealed.has(letterIdx) ? ch : "_");
+        letterIdx++;
       } else {
         slots.push(ch);
       }
@@ -189,9 +196,60 @@ export const Logic = {
     return slots.join(" ");
   },
 
+  // Reveal order for revealName: a permutation of letter-indices [1..L-1] —
+  // index 0 (the first letter) is excluded so it's never revealed. Seeded
+  // from `name` (via a tiny string hash + mulberry32 PRNG) so it's stable:
+  // the same word always yields the same order, letter by letter. A greedy
+  // pass over the seeded-shuffled candidates then avoids placing adjacent
+  // letter-positions back-to-back where possible, without disturbing
+  // determinism.
+  _revealOrder(name: string): number[] {
+    const L = Logic.letterCount(name);
+    const candidates: number[] = [];
+    for (let i = 1; i < L; i++) candidates.push(i);
+    Logic._shuffle(candidates, Logic._mulberry32(Logic._hashString(name)));
+
+    const remaining = candidates.slice();
+    const order: number[] = [];
+    while (remaining.length) {
+      const prev = order[order.length - 1];
+      const idx = order.length ? remaining.findIndex((n) => Math.abs(n - prev) !== 1) : 0;
+      order.push(remaining.splice(idx === -1 ? 0 : idx, 1)[0]);
+    }
+    return order;
+  },
+
+  // 32-bit FNV-1a string hash, used to seed the per-word reveal order.
+  _hashString(s: string): number {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return h >>> 0;
+  },
+
+  // mulberry32: tiny deterministic PRNG (same seed -> same sequence), enough
+  // for reveal-order shuffling without pulling in a dependency.
+  _mulberry32(seed: number): Rng {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  },
+
   // Number of alphabetic characters in a name, so callers can cap `count`.
   letterCount(name: string): number {
     return (name.match(/[a-zA-Z]/g) || []).length;
+  },
+
+  // Number of letters revealName can ever reveal for `name` — letterCount
+  // minus the permanently-hidden first letter, floored at 0.
+  hangmanReveals(name: string): number {
+    return Math.max(0, Logic.letterCount(name) - 1);
   },
 
   // Pick a wrong (non-correct, not-yet-eliminated) choice id at random, for

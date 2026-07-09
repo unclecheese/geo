@@ -125,9 +125,10 @@ export default function MapPage() {
     hintUsed = eliminatedIds.length > 0;
     hintExhausted = choices.every((c) => c.id === item.id || eliminatedIds.includes(c.id));
   } else if (mode === "name" && difficult && item) {
-    // revealedCount 0 = hangman hidden, 1 = all blanks, k = k-1 letters shown.
+    // revealedCount 0 = hangman hidden, 1 = all blanks, k = k-1 letters shown
+    // (the first letter is never among them — see Logic.revealName).
     hintUsed = revealedCount > 0;
-    hintExhausted = revealedCount >= Logic.letterCount(item.name) + 1;
+    hintExhausted = revealedCount >= Logic.hangmanReveals(item.name) + 1;
   }
   const hintLabel = hintUsed ? "Show another hint" : "Show hint";
 
