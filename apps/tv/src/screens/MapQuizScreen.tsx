@@ -166,9 +166,13 @@ export function MapQuizScreen() {
         }
       } else if (curId) {
         const next = findNav.graph[curId]?.[dir];
-        if (next) {
+        const nextC = next ? findNav.byId.get(next) : undefined;
+        if (next && nextC) {
           setCurId(next);
           ctl.setHighlights(new Map([[next, "sel"]]));
+          // Pan the camera to follow the highlight toward the region's edges
+          // (e.g. Niger→Algeria pans up) so it never hides behind the HUD.
+          ctl.ensureVisible(nextC);
         }
       }
     },

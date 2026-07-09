@@ -21,6 +21,64 @@ const IDENTITY: MapTransform = { k: 1, tx: 0, ty: 0 };
 // the ground beneath its tip regardless of the target's position).
 const ARROW_ANGLE = 0;
 
+// The band of the 1920×1080 map NOT covered by HUD chrome: the Scorebar strip
+// along the top and the QuizCard overlay anchored to the bottom. Find framing
+// fits regions into this rect, and pan-follow keeps the current country inside
+// it, so nothing the player is looking at ever hides behind the chrome. The
+// bottom inset tracks the card's default (no-hints) height — expanding hints
+// grow it further, but those are opt-in and carry their own text.
+const SAFE = { top: 140, bottom: 400, left: 90, right: 90 };
+const safeRect = () => ({
+  x0: SAFE.left,
+  y0: SAFE.top,
+  x1: VIEWPORT.w - SAFE.right,
+  y1: VIEWPORT.h - SAFE.bottom,
+});
+
+// A country's projected centroid must sit at least this far inside the safe rect
+// before pan-follow leaves it alone — the slack absorbs the country's own extent
+// so its body, not just its centroid, stays clear of the edges.
+const COMFORT_MARGIN = 120;
+
+type Rect = { x0: number; y0: number; x1: number; y1: number };
+
+/** Like core's fitBounds but centres the box inside an arbitrary sub-rect of the
+ *  viewport (not the whole viewport) — so a region lands in the clear band
+ *  between the scorebar and the card. */
+function fitInto(
+  px: [[number, number], [number, number]],
+  rect: Rect,
+  minK: number,
+  maxK: number
+): MapTransform {
+  const [[x0, y0], [x1, y1]] = px;
+  const boxW = x1 - x0;
+  const boxH = y1 - y0;
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  const rw = rect.x1 - rect.x0;
+  const rh = rect.y1 - rect.y0;
+  let k = Math.min(rw / boxW, rh / boxH);
+  if (!isFinite(k)) k = maxK;
+  k = Math.max(minK, Math.min(k, maxK));
+  const rcx = (rect.x0 + rect.x1) / 2;
+  const rcy = (rect.y0 + rect.y1) / 2;
+  return { k, tx: rcx - cx * k, ty: rcy - cy * k };
+}
+
+/** Keep at least `margin` px of the projected sphere on screen at any pan
+ *  offset, so pan-follow can never scroll the whole map away. */
+function clampPan(t: MapTransform): MapTransform {
+  const margin = 200;
+  const minTx = VIEWPORT.w - VIEWPORT.w * t.k - margin;
+  const minTy = VIEWPORT.h - VIEWPORT.h * t.k - margin;
+  return {
+    k: t.k,
+    tx: Math.max(minTx, Math.min(margin, t.tx)),
+    ty: Math.max(minTy, Math.min(margin, t.ty)),
+  };
+}
+
 export interface TvMapState {
   transform: MapTransform;
   paints: Map<string, PaintKind>;
@@ -34,8 +92,14 @@ export interface TvMapController extends MapPort {
   /** Replace the whole paint map in one notify — used by dpad find navigation,
    *  which repaints region groups / the current country on every move. */
   setHighlights(paints: Map<string, PaintKind>): void;
-  /** Zoom to fit every country of a nav-region (dpad find, region → country). */
+  /** Zoom to fit every country of a nav-region (dpad find, region → country)
+   *  into the HUD-safe band. */
   frameRegion(members: Country[]): void;
+  /** Edge-triggered pan-follow: if `c`'s projected centroid is near/outside the
+   *  safe rect, pan (k unchanged) just enough to bring it comfortably inside;
+   *  otherwise do nothing. Keeps navigation toward a region's edge from walking
+   *  the highlight under the scorebar/card. */
+  ensureVisible(c: Country): void;
 }
 
 /** MapPort implementation for tvOS: drives the same transform/paint/box/arrow
@@ -135,11 +199,33 @@ export function createTvMapController(): TvMapController {
         y1 = Math.max(y1, px[1][1]);
       }
       if (!isFinite(x0) || !isFinite(y0) || !isFinite(x1) || !isFinite(y1)) return;
-      // A little breathing room around the region, then fit — cap the zoom so a
-      // compact region (e.g. Europe) still shows with surrounding context.
+      // A little breathing room around the region, then fit into the HUD-safe
+      // band (not the full viewport) — cap the zoom so a compact region still
+      // shows with surrounding context. A region too big to fit even at k=1
+      // overflows the band; pan-follow (ensureVisible) covers navigating it.
       const padX = (x1 - x0) * 0.08;
       const padY = (y1 - y0) * 0.08;
-      transform = fitBounds([[x0 - padX, y0 - padY], [x1 + padX, y1 + padY]], VIEWPORT, 1, 6);
+      transform = fitInto([[x0 - padX, y0 - padY], [x1 + padX, y1 + padY]], safeRect(), 1, 6);
+      notify();
+    },
+    ensureVisible(c: Country) {
+      if (!c.feature) return;
+      const centroid = largestPolygonCentroid(c.feature);
+      const w = PROJ(centroid);
+      if (!w || !isFinite(w[0]) || !isFinite(w[1])) return;
+      const sx = w[0] * transform.k + transform.tx;
+      const sy = w[1] * transform.k + transform.ty;
+      const r = safeRect();
+      const m = COMFORT_MARGIN;
+      let dx = 0;
+      let dy = 0;
+      if (sx < r.x0 + m) dx = r.x0 + m - sx;
+      else if (sx > r.x1 - m) dx = r.x1 - m - sx;
+      if (sy < r.y0 + m) dy = r.y0 + m - sy;
+      else if (sy > r.y1 - m) dy = r.y1 - m - sy;
+      // Edge-triggered: already comfortably inside → don't move (no jitter).
+      if (dx === 0 && dy === 0) return;
+      transform = clampPan({ k: transform.k, tx: transform.tx + dx, ty: transform.ty + dy });
       notify();
     },
     markArrow(c: Country) {
