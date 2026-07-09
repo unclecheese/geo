@@ -287,44 +287,36 @@ function stronglyConnected(ids: string[], g: FindGraph): string[][] {
   return comps;
 }
 
-/** Place a repair edge from→to on `from`, preferring the direction matching the
- *  true bearing, then any free slot, and only overwriting as a last resort.
- *  Returns true if the edge was recorded on a previously-null slot (i.e. cheap). */
-function addEdge(from: Country, to: Country, g: FindGraph): void {
-  const e = g[from.id];
-  const want = quadrant(from.centroid as [number, number], to.centroid as [number, number]);
-  if (e[want] === null) {
-    e[want] = to.id;
-    return;
-  }
-  // Bearing slot taken — use the nearest free direction (by compass order).
-  const order: Record<Dir, Dir[]> = {
-    n: ["e", "w", "s"],
-    e: ["n", "s", "w"],
-    s: ["e", "w", "n"],
-    w: ["n", "s", "e"],
-  };
-  for (const d of order[want]) {
-    if (e[d] === null) {
-      e[d] = to.id;
-      return;
-    }
-  }
-  // All four occupied (very rare) — overwrite the bearing slot.
-  e[want] = to.id;
+/** The true compass direction of `to` as seen from `from` (by centroid). Every
+ *  n/e/s/w edge in the graph — base or repair — points to a country that lies in
+ *  this direction, so the UI can animate the dpad move truthfully. */
+export function bearingDir(from: Country, to: Country): Dir {
+  return quadrant(from.centroid as [number, number], to.centroid as [number, number]);
 }
 
-/** True if `from` has a free directional slot. */
-function hasFreeSlot(e: DirEdges): boolean {
-  return DIRS.some((d) => e[d] === null);
+/** The slot a repair edge from→to must occupy: its TRUE compass bearing. */
+function edgeSlot(from: Country, to: Country): Dir {
+  return bearingDir(from, to);
+}
+
+/** Place a repair edge from→to in the slot equal to its true bearing. A repair
+ *  edge is only ever labelled by real direction — never a contradicting slot —
+ *  so the dpad never sends "east" to a country that lies west. If that slot is
+ *  already taken we OVERWRITE it (a same-direction edge is still truthful; the
+ *  displaced neighbour stays reachable multi-hop, and the caller re-validates
+ *  strong connectivity so nothing is stranded). */
+function addEdge(from: Country, to: Country, g: FindGraph): void {
+  g[from.id][edgeSlot(from, to)] = to.id;
 }
 
 /**
  * Stitch a region's SCCs into a single strongly-connected component by adding a
  * cycle over the condensation: comp0 → comp1 → … → compK → comp0. Each link is
- * the nearest cross-component country pair whose source still has a free slot,
- * so within-SCC reachability plus the cycle makes every country reachable from
- * every other. Returns the number of repair edges added.
+ * the nearest cross-component country pair, preferring one whose true-bearing
+ * slot is still free (so no existing edge is discarded), else overwriting that
+ * slot. Every repair edge is placed by real bearing, and strong connectivity is
+ * re-validated after each pass — so within-SCC reachability plus the cycle makes
+ * every country reachable from every other. Returns the repair edges added.
  */
 function repairRegion(members: Country[], g: FindGraph): number {
   const byId = new Map(members.map((c) => [c.id, c]));
@@ -344,39 +336,31 @@ function repairRegion(members: Country[], g: FindGraph): number {
     for (let i = 0; i < comps.length; i++) {
       const src = comps[i];
       const dst = comps[(i + 1) % comps.length];
-      let bestU: Country | null = null;
-      let bestV: Country | null = null;
-      let bestD = Infinity;
+      // Nearest pair whose bearing slot is free (no overwrite), and — as a
+      // fallback — nearest pair regardless. Both keep the edge truthful.
+      let freeU: Country | null = null, freeV: Country | null = null, freeD = Infinity;
+      let anyU: Country | null = null, anyV: Country | null = null, anyD = Infinity;
       for (const uId of src) {
         const u = byId.get(uId)!;
-        if (!hasFreeSlot(g[uId])) continue;
         for (const vId of dst) {
           const v = byId.get(vId)!;
           const d = gcKm(u.centroid as [number, number], v.centroid as [number, number]);
-          if (d < bestD) {
-            bestD = d;
-            bestU = u;
-            bestV = v;
+          if (d < anyD) {
+            anyD = d;
+            anyU = u;
+            anyV = v;
+          }
+          if (g[uId][edgeSlot(u, v)] === null && d < freeD) {
+            freeD = d;
+            freeU = u;
+            freeV = v;
           }
         }
       }
-      // Fallback: no free-slot source in this component — allow overwrite.
-      if (!bestU) {
-        for (const uId of src) {
-          const u = byId.get(uId)!;
-          for (const vId of dst) {
-            const v = byId.get(vId)!;
-            const d = gcKm(u.centroid as [number, number], v.centroid as [number, number]);
-            if (d < bestD) {
-              bestD = d;
-              bestU = u;
-              bestV = v;
-            }
-          }
-        }
-      }
-      if (bestU && bestV) {
-        addEdge(bestU, bestV, g);
+      const u = freeU ?? anyU;
+      const v = freeV ?? anyV;
+      if (u && v) {
+        addEdge(u, v, g);
         added++;
       }
     }

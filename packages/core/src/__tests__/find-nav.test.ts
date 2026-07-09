@@ -7,6 +7,7 @@ import {
   NAV_REGIONS,
   NavRegionId,
   buildFindGraph,
+  bearingDir,
   DirEdges,
   FindGraph,
 } from "../find-nav";
@@ -125,6 +126,21 @@ describe("buildFindGraph — reachability (the guarantee)", () => {
       for (const d of DIRS) {
         const t = edges[d];
         if (t) expect(regionOf.get(t)).toBe(regionOf.get(id));
+      }
+    }
+  });
+
+  it("labels every edge with its true compass direction (incl. repair edges)", () => {
+    // The dpad must never send "east" to a country that lies west. Every slot's
+    // occupant must actually bear in that direction — this caught a repair edge
+    // that pointed Barbados 'e' at Saint Vincent (which is west of it).
+    const byId = new Map(countries.map((c) => [c.id, c]));
+    for (const [id, edges] of Object.entries(graph)) {
+      const from = byId.get(id)!;
+      for (const d of DIRS) {
+        const t = edges[d];
+        if (!t) continue;
+        expect(bearingDir(from, byId.get(t)!), `${from.name} '${d}' -> ${byId.get(t)!.name}`).toBe(d);
       }
     }
   });
