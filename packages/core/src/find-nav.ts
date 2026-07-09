@@ -413,3 +413,57 @@ export function buildFindGraph(countries: Country[]): FindGraphResult {
   }
   return { graph, regions, repairs };
 }
+
+// ---------------------------------------------------------------------------
+// D. Framing: dominant cluster (antimeridian)
+// ---------------------------------------------------------------------------
+
+/**
+ * Given the screen-x positions of a region's members, return a keep-mask that
+ * selects the dominant on-screen cluster. A region that straddles the
+ * antimeridian (Oceania: maritime SE Asia near +180° vs. Polynesia near -180°)
+ * has its members thrown to opposite edges by a 0°-centred projection, so the
+ * naïve bounding box spans nearly the whole width and can't be zoomed into.
+ *
+ * The positions are sorted and split at their single widest gap: if that gap is
+ * at least `gapThreshold` the smaller side is a trans-dateline minority and is
+ * dropped (the caller frames the majority; pan-follow reaches the rest); if the
+ * widest gap is below the threshold the members form one cluster and all are
+ * kept — so compact regions are unaffected. Tie-break when the two sides have
+ * equal counts: keep the side spanning the wider x-range (more of the region);
+ * if the spans tie too, keep the higher-x (right) side.
+ *
+ * Pure — screen-x numbers only, no projection or Country dependency.
+ */
+export function dominantCluster(xs: number[], gapThreshold: number): boolean[] {
+  const n = xs.length;
+  if (n <= 1) return xs.map(() => true);
+
+  const order = xs.map((_, i) => i).sort((a, b) => xs[a] - xs[b]);
+  // The single widest gap between consecutive sorted positions; the split falls
+  // between order[splitAt] and order[splitAt + 1].
+  let splitAt = -1;
+  let maxGap = -Infinity;
+  for (let i = 0; i < n - 1; i++) {
+    const gap = xs[order[i + 1]] - xs[order[i]];
+    if (gap > maxGap) {
+      maxGap = gap;
+      splitAt = i;
+    }
+  }
+  if (maxGap < gapThreshold) return xs.map(() => true);
+
+  const left = order.slice(0, splitAt + 1); // lower x
+  const right = order.slice(splitAt + 1); // higher x
+  const span = (g: number[]) => xs[g[g.length - 1]] - xs[g[0]]; // g is x-sorted
+  let keepRight: boolean;
+  if (right.length !== left.length) {
+    keepRight = right.length > left.length;
+  } else {
+    const sr = span(right);
+    const sl = span(left);
+    keepRight = sr !== sl ? sr > sl : true; // wider span; final tie → higher-x
+  }
+  const keep = new Set(keepRight ? right : left);
+  return xs.map((_, i) => keep.has(i));
+}

@@ -8,6 +8,7 @@ import {
   NavRegionId,
   buildFindGraph,
   bearingDir,
+  dominantCluster,
   DirEdges,
   FindGraph,
 } from "../find-nav";
@@ -201,5 +202,46 @@ describe("buildFindGraph — tie-break", () => {
     const east = mk("EAST", 2, 10);
     const { graph } = buildFindGraph([base, west, east]);
     expect(graph["BASE"].n).toBe("WEST");
+  });
+});
+
+describe("dominantCluster — antimeridian framing", () => {
+  const GAP = 576; // 0.30 * 1920, the value frameRegion passes
+
+  it("keeps everything when the widest gap is below threshold", () => {
+    // A compact region (all members bunched) — no dateline split.
+    const xs = [100, 300, 150, 250, 200];
+    expect(dominantCluster(xs, GAP)).toEqual([true, true, true, true, true]);
+  });
+
+  it("drops a left minority when the majority is on the right (Oceania shape)", () => {
+    // Two Polynesian stragglers thrown to the far left, the Australasian mass
+    // on the right; the widest gap is the dateline void between them.
+    const xs = [40, 60, 1400, 1500, 1600];
+    expect(dominantCluster(xs, GAP)).toEqual([false, false, true, true, true]);
+  });
+
+  it("drops a right minority when the majority is on the left", () => {
+    const xs = [200, 300, 400, 1700, 1750];
+    expect(dominantCluster(xs, GAP)).toEqual([true, true, true, false, false]);
+  });
+
+  it("on an equal-count split keeps the wider-span side", () => {
+    // Left pair spans 100px, right pair spans 200px; counts tie 2–2.
+    const xs = [0, 100, 1000, 1200];
+    expect(dominantCluster(xs, GAP)).toEqual([false, false, true, true]);
+    // Mirror: give the LEFT the wider span and it wins instead.
+    const xs2 = [0, 200, 1100, 1200];
+    expect(dominantCluster(xs2, GAP)).toEqual([true, true, false, false]);
+  });
+
+  it("on an equal-count, equal-span split keeps the higher-x side", () => {
+    const xs = [0, 100, 1000, 1100]; // both sides span 100px, tie 2–2
+    expect(dominantCluster(xs, GAP)).toEqual([false, false, true, true]);
+  });
+
+  it("handles trivial inputs", () => {
+    expect(dominantCluster([], GAP)).toEqual([]);
+    expect(dominantCluster([999], GAP)).toEqual([true]);
   });
 });

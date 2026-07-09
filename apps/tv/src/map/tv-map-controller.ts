@@ -6,6 +6,7 @@ import {
   layoutTinyBoxes,
   largestPolygonCentroid,
   fitBounds,
+  dominantCluster,
   type Country,
   type MapPort,
   type MapTransform,
@@ -188,15 +189,38 @@ export function createTvMapController(): TvMapController {
       notify();
     },
     frameRegion(members: Country[]) {
-      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      // Per-member: a projected box and a representative centroid screen-x.
+      // A member whose geoBounds crosses the antimeridian (west λ > east λ) is
+      // torn by the 0°-centred projection into a full-width box, so contribute
+      // its largest-polygon centroid as a zero-size point instead — that keeps
+      // Russia (eastAsia) and Alaska/USA (northAmerica) in the mainland mass.
+      const memberBoxes: [[number, number], [number, number]][] = [];
+      const centroidXs: number[] = [];
       for (const c of members) {
         if (!c.feature) continue;
-        const px = projectBox(geoBounds(c.feature as never) as [[number, number], [number, number]]);
-        if (!px) continue;
-        x0 = Math.min(x0, px[0][0]);
-        y0 = Math.min(y0, px[0][1]);
-        x1 = Math.max(x1, px[1][0]);
-        y1 = Math.max(y1, px[1][1]);
+        const gb = geoBounds(c.feature as never) as [[number, number], [number, number]];
+        const cp = PROJ(largestPolygonCentroid(c.feature));
+        if (!cp || !isFinite(cp[0]) || !isFinite(cp[1])) continue;
+        const torn = gb[0][0] > gb[1][0];
+        const box = torn ? ([[cp[0], cp[1]], [cp[0], cp[1]]] as [[number, number], [number, number]]) : projectBox(gb);
+        if (!box) continue;
+        memberBoxes.push(box);
+        centroidXs.push(cp[0]);
+      }
+      if (!memberBoxes.length) return;
+
+      // Drop a trans-dateline minority (Oceania: Polynesia at the far left vs.
+      // the Australasian mass at the right) so we frame the dominant cluster;
+      // pan-follow reaches the stragglers. Compact regions keep every member.
+      const keep = dominantCluster(centroidXs, 0.3 * VIEWPORT.w);
+
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let i = 0; i < memberBoxes.length; i++) {
+        if (!keep[i]) continue;
+        x0 = Math.min(x0, memberBoxes[i][0][0]);
+        y0 = Math.min(y0, memberBoxes[i][0][1]);
+        x1 = Math.max(x1, memberBoxes[i][1][0]);
+        y1 = Math.max(y1, memberBoxes[i][1][1]);
       }
       if (!isFinite(x0) || !isFinite(y0) || !isFinite(x1) || !isFinite(y1)) return;
       // A little breathing room around the region, then fit into the HUD-safe
