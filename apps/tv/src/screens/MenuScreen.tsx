@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useState } from "react";
 import {
   View,
   Text,
@@ -9,288 +9,319 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import {
-  MODES,
-  Logic,
-  DataLayer,
-  useAtlasStore,
-  type ModeId,
-  type QuizDifficulty,
-} from "@geobean/core";
+import { useAtlasStore, toast } from "@geobean/core";
 import type { RootStackParamList } from "../navigation";
 import { theme } from "../theme";
 import { fonts } from "../fonts";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-// The five modes the TV menu offers, in display order. Build is web-only (drag),
-// so it is deliberately absent here.
-const MODE_TOGGLES: { id: ModeId; label: string }[] = [
-  { id: "find", label: "Find" },
-  { id: "name", label: "Name" },
-  { id: "capital", label: "Capital" },
-  { id: "flag", label: "Flag" },
-  { id: "border", label: "Borders" },
+// The quiz families, each a card on the landing — copied from web's CARDS
+// (apps/web/app/page.tsx). Build/Puzzle is present but disabled: the drag builder
+// isn't implemented on TV, so it reads as "coming soon" rather than being hidden,
+// keeping the three-chapter layout intentional.
+type CardType = "map" | "expert" | "build";
+const CARDS: {
+  type: CardType;
+  icon: string;
+  title: string;
+  tag: string;
+  blurb: string;
+  disabled?: boolean;
+}[] = [
+  {
+    type: "map",
+    icon: "🗺️",
+    title: "Map identification",
+    tag: "Find it · name it",
+    blurb: "Pin a country on the world map, or name the one that's glowing.",
+  },
+  {
+    type: "expert",
+    icon: "🚩",
+    title: "Quiz",
+    tag: "Flags · capitals · borders",
+    blurb: "Rapid-fire flags, capitals, and framed borders. No world map — just recall.",
+  },
+  {
+    type: "build",
+    icon: "🧩",
+    title: "Puzzle",
+    tag: "Build a continent",
+    blurb: "Drag every country into place and rebuild a continent.",
+    disabled: true,
+  },
 ];
 
-const ROUND_LENGTHS = [10, 15, 20];
-
 /**
- * 10-foot session setup, FOCUS mode only (no cursor). Reads and writes
- * `useAtlasStore` settings directly, the same durable state the web menu uses.
- * Every control is a focusable Pressable with a visible brass focus ring; the
- * three Start buttons normalise the mode set to their family (find/name → Map,
- * capital/flag → Expert, border → Borders) and navigate to it. The family
- * screen's mount effect calls the relevant store's `start()`.
+ * The intro / landing screen — the tvOS render of web's menu landing
+ * (apps/web/app/page.tsx, the `selected === null` state). A bean hero, the
+ * "GeoBean" wordmark in the display serif, an italic tagline, then the three
+ * numbered chapter cards. Selecting Map or Quiz pushes the per-family
+ * ConfigScreen; Puzzle is disabled (Build is web-only). A bottom utility row
+ * mirrors web's footer: Stats / Export / Import / Reset / sound.
+ *
+ * The bean mark on web is an SVG (public/geobean.svg); react-native-svg isn't a
+ * dependency of the TV app, so the hero uses the 🫘 emoji — the closest
+ * couch-distance stand-in without pulling in a native module + pod install.
+ *
+ * FOCUS mode only (no cursor): every card and footer button is a focusable
+ * Pressable with a brass focus ring + scale. The first card takes preferred
+ * focus. This is the root screen, so the Menu/Back button keeps its default
+ * tvOS behaviour (exit) — useMenuButtonBack is deliberately not mounted here.
  */
 export function MenuScreen() {
   const nav = useNavigation<Nav>();
   const settings = useAtlasStore((s) => s.settings);
   const setSettings = useAtlasStore((s) => s.setSettings);
+  const exportState = useAtlasStore((s) => s.exportState);
+  const resetProgress = useAtlasStore((s) => s.resetProgress);
   const hydrated = useAtlasStore((s) => s._hasHydrated);
 
-  // Region options come straight off the loaded dataset (LoadingGate guarantees
-  // it is populated before this screen mounts).
-  const regionOptions = useMemo(
-    () => Array.from(new Set(DataLayer.countries.map((c) => c.region))).sort(),
-    []
-  );
+  const [confirmReset, setConfirmReset] = useState(false);
 
-  const modeOn = (id: ModeId) => hydrated && settings.modes.includes(id);
-
-  // Toggle a mode. Capital+Flag combine; Find+Name combine; Borders is exclusive
-  // (its own group). Selecting across groups replaces the set — sanitizeModes at
-  // Start coerces any stray mix down to one group anyway.
-  const toggleMode = (id: ModeId) => {
-    if (id === "border") {
-      setSettings({ modes: settings.modes.includes("border") ? ["capital"] : ["border"] });
-      return;
-    }
-    const group = MODES[id].group;
-    const set = new Set(
-      settings.modes.filter((m) => MODES[m]?.group === group && m !== "border")
-    );
-    if (set.has(id)) set.delete(id);
-    else set.add(id);
-    const nextModes = set.size ? [...set] : [id];
-    setSettings({ modes: nextModes });
+  const openCard = (type: CardType) => {
+    if (type === "build") return; // disabled — no TV builder
+    nav.navigate("Config", { family: type });
   };
 
-  // Region multi-select. Empty = whole world (every chip reads on). Narrowing
-  // from "all" focuses one; a full set collapses back to [].
-  const regionOn = (r: string) =>
-    hydrated && (settings.regions.length === 0 || settings.regions.includes(r));
-  const allRegionsOn =
-    hydrated && (settings.regions.length === 0 || settings.regions.length === regionOptions.length);
+  // Export: tvOS has no download/file-save affordance, so we surface the JSON
+  // length via a toast rather than pretending to write a file. Import likewise
+  // has no file picker on TV — both are honestly noted, full round-trip lives on
+  // the web app. (Reset, the destructive one, IS wired.)
+  const doExport = () => {
+    const json = exportState();
+    toast(`Export is on the web app — ${json.length} chars of progress here.`, "");
+  };
+  const doImport = () => {
+    toast("Import your progress from the web app.", "");
+  };
+  const doReset = () => {
+    resetProgress();
+    setConfirmReset(false);
+    toast("Progress reset.", "good");
+  };
+  const toggleSound = () => setSettings({ sound: !settings.sound });
 
-  const toggleRegion = (region: string) => {
-    let next: string[];
-    if (settings.regions.length === 0) next = [region];
-    else if (settings.regions.includes(region)) next = settings.regions.filter((r) => r !== region);
-    else next = [...settings.regions, region];
-    if (next.length === 0 || next.length === regionOptions.length) next = [];
-    setSettings({ regions: next });
-  };
-
-  const setQuizDifficulty = (d: QuizDifficulty) => setSettings({ quizDifficulty: d });
-
-  // Normalise the mode set to the family's canonical selection, then navigate.
-  const startMap = () => {
-    const keep = settings.modes.filter((m) => MODES[m].group === "map");
-    setSettings({ modes: keep.length ? keep : ["find", "name"] });
-    nav.navigate("MapQuiz");
-  };
-  const startExpert = () => {
-    // Borders lives on the Expert card in web; if it's the picked mode, route to
-    // the Borders family instead. sanitizeModes coerces any residual mix.
-    if (settings.modes.includes("border")) {
-      setSettings({ modes: ["border"] });
-      nav.navigate("BordersQuiz");
-      return;
-    }
-    const keep = settings.modes.filter((m) => MODES[m].group === "expert");
-    setSettings({ modes: Logic.sanitizeModes(keep.length ? keep : ["capital", "flag"]) });
-    nav.navigate("ExpertQuiz");
-  };
-  const startBorders = () => {
-    setSettings({ modes: ["border"] });
-    nav.navigate("BordersQuiz");
-  };
+  const soundOn = hydrated && settings.sound;
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>GeoBean</Text>
-      <Text style={styles.subtitle}>Compulsive geography.</Text>
+      <View style={styles.hero}>
+        <Text style={styles.heroLogo}>🫘</Text>
+        <Text style={styles.title}>GeoBean</Text>
+        <Text style={styles.tagline}>Compulsive geography.</Text>
+      </View>
 
-      <Section title="What to test">
-        <View style={styles.segRow}>
-          {MODE_TOGGLES.map((m, i) => (
-            <Chip
-              key={m.id}
-              label={m.label}
-              active={modeOn(m.id)}
-              onPress={() => toggleMode(m.id)}
-              preferred={i === 0}
-            />
-          ))}
-        </View>
-      </Section>
-
-      <Section title="Regions">
-        <View style={styles.segRow}>
-          <Chip label="🌍 All" active={allRegionsOn} onPress={() => setSettings({ regions: [] })} />
-          {regionOptions.map((r) => (
-            <Chip key={r} label={r} active={regionOn(r)} onPress={() => toggleRegion(r)} />
-          ))}
-        </View>
-      </Section>
-
-      <Section title="Difficulty">
-        <View style={styles.segRow}>
-          <Chip
-            label="Easy"
-            active={hydrated && settings.quizDifficulty === "easy"}
-            onPress={() => setQuizDifficulty("easy")}
+      <View style={styles.cards}>
+        {CARDS.map((c, i) => (
+          <QuizCard
+            key={c.type}
+            index={i}
+            icon={c.icon}
+            title={c.title}
+            tag={c.tag}
+            blurb={c.blurb}
+            disabled={c.disabled}
+            preferred={i === 0}
+            onPress={() => openCard(c.type)}
           />
-          <Chip
-            label="Difficult"
-            active={hydrated && settings.quizDifficulty === "difficult"}
-            onPress={() => setQuizDifficulty("difficult")}
-          />
-        </View>
-        <Text style={styles.hint}>Easy = multiple choice. Difficult = type the answer.</Text>
-      </Section>
+        ))}
+      </View>
 
-      <Section title="Length">
-        <View style={styles.segRow}>
-          <Chip
-            label="Around the world 🌍"
-            active={hydrated && settings.session === "around"}
-            onPress={() => setSettings({ session: "around" })}
-          />
-          {ROUND_LENGTHS.map((n) => (
-            <Chip
-              key={n}
-              label={String(n)}
-              active={hydrated && settings.session === "round" && settings.roundLen === n}
-              onPress={() => setSettings({ session: "round", roundLen: n })}
-            />
-          ))}
-        </View>
-      </Section>
-
-      <Section title="Start">
-        <View style={styles.segRow}>
-          <StartButton label="Map ▸" onPress={startMap} />
-          <StartButton label="Expert ▸" onPress={startExpert} />
-          <StartButton label="Borders ▸" onPress={startBorders} />
-        </View>
-      </Section>
-
-      <Section title="Progress">
-        <View style={styles.segRow}>
-          <Chip label="Your progress ▸" active={false} onPress={() => nav.navigate("Stats")} />
-        </View>
-      </Section>
+      <View style={styles.footer}>
+        <FooterButton label="📊 Stats" onPress={() => nav.navigate("Stats")} />
+        <FooterButton label="Export" onPress={doExport} />
+        <FooterButton label="Import" onPress={doImport} />
+        {confirmReset ? (
+          <>
+            <FooterButton label="Confirm reset" danger onPress={doReset} />
+            <FooterButton label="Cancel" onPress={() => setConfirmReset(false)} />
+          </>
+        ) : (
+          <FooterButton label="Reset" onPress={() => setConfirmReset(true)} />
+        )}
+        <FooterButton
+          label={soundOn ? "🔊" : "🔇"}
+          active={soundOn}
+          onPress={toggleSound}
+        />
+      </View>
     </ScrollView>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-function Chip({
-  label,
-  active,
-  onPress,
-  preferred,
+function QuizCard({
+  index,
+  icon,
+  title,
+  tag,
+  blurb,
   disabled,
+  preferred,
+  onPress,
 }: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  preferred?: boolean;
+  index: number;
+  icon: string;
+  title: string;
+  tag: string;
+  blurb: string;
   disabled?: boolean;
+  preferred?: boolean;
+  onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      hasTVPreferredFocus={preferred}
+      // A disabled card must not steal preferred focus.
+      hasTVPreferredFocus={preferred && !disabled}
       style={(state: PressableStateCallbackType) => [
-        styles.chip,
-        active && styles.chipActive,
-        state.focused && styles.chipFocused,
-        disabled && styles.chipDisabled,
+        styles.card,
+        disabled && styles.cardDisabled,
+        state.focused && !disabled && styles.cardFocused,
       ]}
     >
-      <Text
-        style={[styles.chipText, active && styles.chipTextActive, disabled && styles.chipTextDisabled]}
-      >
-        {label}
+      <Text style={styles.cardNo} allowFontScaling={false}>
+        {String(index + 1).padStart(2, "0")}
       </Text>
+      <Text style={styles.cardIcon}>{icon}</Text>
+      <View style={styles.cardBody}>
+        <Text style={styles.cardTag}>{tag}</Text>
+        <Text style={styles.cardTitle}>{title}</Text>
+        <Text style={styles.cardBlurb}>{blurb}</Text>
+        {disabled && <Text style={styles.comingSoon}>Coming soon — build it on the web</Text>}
+      </View>
     </Pressable>
   );
 }
 
-function StartButton({ label, onPress }: { label: string; onPress: () => void }) {
+function FooterButton({
+  label,
+  onPress,
+  active,
+  danger,
+}: {
+  label: string;
+  onPress: () => void;
+  active?: boolean;
+  danger?: boolean;
+}) {
   return (
     <Pressable
       onPress={onPress}
       style={(state: PressableStateCallbackType) => [
-        styles.start,
-        state.focused && styles.startFocused,
+        styles.footerBtn,
+        active && styles.footerBtnActive,
+        danger && styles.footerBtnDanger,
+        state.focused && styles.footerBtnFocused,
       ]}
     >
-      <Text style={styles.startText}>{label}</Text>
+      <Text style={[styles.footerText, danger && styles.footerTextDanger]}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.bg },
-  content: { alignItems: "center", paddingVertical: 56, paddingHorizontal: 64 },
-  title: { color: theme.cream, fontSize: 64, fontFamily: fonts.displaySemi },
-  subtitle: { color: theme.creamDim, fontSize: 24, fontFamily: fonts.body, marginBottom: 40 },
-  section: { width: "100%", maxWidth: 1100, marginBottom: 32 },
-  sectionTitle: {
+  content: { alignItems: "center", paddingVertical: 60, paddingHorizontal: 64 },
+
+  hero: { alignItems: "center", marginBottom: 44 },
+  heroLogo: { fontSize: 84, lineHeight: 96, marginBottom: 8 },
+  title: {
     color: theme.cream,
-    fontSize: 20,
+    fontSize: 76,
     fontFamily: fonts.displaySemi,
-    letterSpacing: 1,
-    marginBottom: 14,
-    fontVariant: ["small-caps"],
+    letterSpacing: -1,
   },
-  segRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  chip: {
-    backgroundColor: theme.parchmentInset,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: "transparent",
-    paddingVertical: 12,
-    paddingHorizontal: 22,
+  tagline: {
+    color: theme.creamDim,
+    fontSize: 26,
+    fontFamily: fonts.body,
+    fontStyle: "italic",
+    marginTop: 10,
   },
-  chipActive: { backgroundColor: theme.parchment2, borderColor: theme.forest },
-  chipFocused: { borderColor: theme.brass, transform: [{ scale: 1.08 }] },
-  chipText: { color: theme.inkDim, fontSize: 22, fontFamily: fonts.bodySemi },
-  chipTextActive: { color: theme.ink },
-  chipDisabled: { opacity: 0.4 },
-  chipTextDisabled: { color: theme.inkFaint },
-  hint: { color: theme.creamDim, fontSize: 16, marginTop: 10, fontStyle: "italic" },
-  start: {
-    backgroundColor: theme.brass,
+
+  cards: { width: "100%", maxWidth: 920, gap: 22 },
+  card: {
+    position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 28,
+    backgroundColor: theme.parchment,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.stroke,
+    borderLeftWidth: 6,
+    borderLeftColor: theme.brass,
+    paddingVertical: 30,
+    paddingHorizontal: 34,
+  },
+  cardFocused: {
+    borderColor: theme.brass,
+    borderLeftColor: theme.brass,
+    transform: [{ scale: 1.03 }],
+  },
+  cardDisabled: { opacity: 0.5, borderLeftColor: theme.hair },
+  cardNo: {
+    position: "absolute",
+    top: 20,
+    right: 26,
+    color: theme.brass,
+    opacity: 0.4,
+    fontSize: 40,
+    fontFamily: fonts.displaySemi,
+  },
+  cardIcon: { fontSize: 68, lineHeight: 78 },
+  cardBody: { flex: 1 },
+  cardTag: {
+    color: theme.forest,
+    fontSize: 20,
+    fontFamily: fonts.bodySemi,
+    marginBottom: 4,
+  },
+  cardTitle: {
+    color: theme.ink,
+    fontSize: 40,
+    fontFamily: fonts.displaySemi,
+    lineHeight: 46,
+  },
+  cardBlurb: {
+    color: theme.inkDim,
+    fontSize: 21,
+    fontFamily: fonts.body,
+    lineHeight: 29,
+    marginTop: 6,
+    maxWidth: 620,
+  },
+  comingSoon: {
+    color: theme.inkFaint,
+    fontSize: 18,
+    fontFamily: fonts.bodySemi,
+    fontStyle: "italic",
+    marginTop: 10,
+  },
+
+  footer: {
+    flexDirection: "row",
+    gap: 14,
+    marginTop: 48,
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
+  footerBtn: {
+    backgroundColor: "rgba(237, 228, 209, 0.06)",
     borderRadius: 10,
-    borderWidth: 3,
-    borderColor: "transparent",
-    paddingVertical: 16,
-    paddingHorizontal: 40,
+    borderWidth: 2,
+    borderColor: "rgba(237, 228, 209, 0.22)",
+    paddingVertical: 14,
+    paddingHorizontal: 26,
+    minWidth: 110,
+    alignItems: "center",
   },
-  startFocused: { borderColor: theme.cream, transform: [{ scale: 1.08 }] },
-  startText: { color: theme.cream, fontSize: 26, fontFamily: fonts.bodySemi },
+  footerBtnActive: { backgroundColor: theme.brass, borderColor: "transparent" },
+  footerBtnDanger: { backgroundColor: theme.oxblood, borderColor: "transparent" },
+  footerBtnFocused: { borderColor: theme.brass, transform: [{ scale: 1.06 }] },
+  footerText: { color: theme.cream, fontSize: 22, fontFamily: fonts.bodySemi },
+  footerTextDanger: { color: theme.cream },
 });
