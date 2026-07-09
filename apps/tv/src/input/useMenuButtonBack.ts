@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { TVEventControl, useTVEventHandler, type HWEvent } from "react-native";
 
 /**
@@ -9,14 +9,21 @@ import { TVEventControl, useTVEventHandler, type HWEvent } from "react-native";
  * `goBack()`. Disabled on unmount so the root Menu screen keeps the standard
  * tvOS behaviour (Menu there exits the app). Popping unmounts the screen, which
  * runs its cleanup effect (the session `quit()`), so the round ends cleanly.
+ *
+ * `goBack` is kept in a ref, updated every render, so a listener registered on
+ * an earlier render (e.g. from a stale `useTVEventHandler` subscription) still
+ * calls the current callback instead of one that closed over stale state.
  */
 export function useMenuButtonBack(goBack: () => void): void {
+  const goBackRef = useRef(goBack);
+  goBackRef.current = goBack;
+
   useEffect(() => {
     TVEventControl.enableTVMenuKey();
     return () => TVEventControl.disableTVMenuKey();
   }, []);
 
   useTVEventHandler((event: HWEvent) => {
-    if (event.eventType === "menu") goBack();
+    if (event.eventType === "menu") goBackRef.current();
   });
 }
