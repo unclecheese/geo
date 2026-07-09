@@ -5,7 +5,6 @@ import {
   computeTinyIds,
   layoutTinyBoxes,
   largestPolygonCentroid,
-  zoomAt,
   fitBounds,
   type Country,
   type MapPort,
@@ -32,23 +31,29 @@ export interface TvMapState {
 export interface TvMapController extends MapPort {
   /** Subscribe the React component; called with every visual state change. */
   bind(onChange: (s: TvMapState) => void): () => void;
-  panBy(dxPx: number, dyPx: number): void;
-  zoomToggle(cursorScreen: { x: number; y: number }): void;
-  screenToProjected(pt: { x: number; y: number }): [number, number];
+  /** Replace the whole paint map in one notify — used by dpad find navigation,
+   *  which repaints region groups / the current country on every move. */
+  setHighlights(paints: Map<string, PaintKind>): void;
+  /** Zoom to fit every country of a nav-region (dpad find, region → country). */
+  frameRegion(members: Country[]): void;
 }
 
 /** MapPort implementation for tvOS: drives the same transform/paint/box/arrow
- *  state TvMap renders, over Skia instead of D3/SVG. Pan/zoom are plain
+ *  state TvMap renders, over Skia instead of D3/SVG. Zoom/frame are plain
  *  translate+scale on a Skia group, so the pure algebra lives in
  *  @geobean/core's map-transform (tested there) — this controller just wires
- *  it to dpad/cursor input and notifies subscribers. */
+ *  it to dpad input and notifies subscribers.
+ *
+ *  Every paint mutator installs a NEW Map reference (never mutates in place):
+ *  TvMap is `memo`'d on `paints` by reference, so a fresh Map is what makes it
+ *  actually repaint when a highlight changes mid-question (e.g. the confirm
+ *  paint after a run of setHighlights moves). */
 export function createTvMapController(): TvMapController {
   const tinyIds = computeTinyIds(DataLayer.countries);
   const boxes = layoutTinyBoxes(DataLayer.countries, tinyIds, PROJ);
 
   let transform: MapTransform = { ...IDENTITY };
   let paints = new Map<string, PaintKind>();
-  let savedTransform: MapTransform | null = null;
   let arrow: TvMapState["arrow"] = null;
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -58,21 +63,29 @@ export function createTvMapController(): TvMapController {
     for (const l of listeners) l(s);
   }
 
-  // Keep at least a sliver of the sphere on screen at any pan offset, so the
-  // player can never scroll the whole map away into empty space. Approximates
-  // the sphere's projected bounds via PROJ's own fitExtent box (0,0)-(1920,1080)
-  // at k=1, scaled by the current k.
-  function clampPan(t: MapTransform): MapTransform {
-    const margin = 200; // px of the map that must stay visible
-    const minTx = VIEWPORT.w - VIEWPORT.w * t.k - margin;
-    const maxTx = margin;
-    const minTy = VIEWPORT.h - VIEWPORT.h * t.k - margin;
-    const maxTy = margin;
-    return {
-      k: t.k,
-      tx: Math.max(minTx, Math.min(maxTx, t.tx)),
-      ty: Math.max(minTy, Math.min(maxTy, t.ty)),
-    };
+  // Project the padded lon/lat box's four corners (geoEqualEarth isn't
+  // rectilinear, so two diagonal corners under-cover it) into a screen-px box.
+  function projectBox(
+    box: [[number, number], [number, number]]
+  ): [[number, number], [number, number]] | null {
+    const [[w, s], [e, n]] = box;
+    const corners: [number, number][] = [
+      [w, s],
+      [w, n],
+      [e, s],
+      [e, n],
+    ];
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const corner of corners) {
+      const p = PROJ(corner);
+      if (!p || !isFinite(p[0]) || !isFinite(p[1])) continue;
+      x0 = Math.min(x0, p[0]);
+      y0 = Math.min(y0, p[1]);
+      x1 = Math.max(x1, p[0]);
+      y1 = Math.max(y1, p[1]);
+    }
+    if (!isFinite(x0) || !isFinite(y0) || !isFinite(x1) || !isFinite(y1)) return null;
+    return [[x0, y0], [x1, y1]];
   }
 
   return {
@@ -84,7 +97,7 @@ export function createTvMapController(): TvMapController {
     },
 
     paint(id, kind) {
-      paints.set(id, kind);
+      paints = new Map(paints).set(id, kind);
       notify();
     },
     clearHighlights() {
@@ -92,36 +105,41 @@ export function createTvMapController(): TvMapController {
       arrow = null;
       notify();
     },
+    setHighlights(next) {
+      paints = new Map(next);
+      arrow = null;
+      notify();
+    },
     reset() {
       transform = { ...IDENTITY };
-      savedTransform = null;
       notify();
     },
     frameCountry(c: Country, pad = 0.4) {
       if (!c.feature) return;
       const geoBox = geoBounds(c.feature as never) as [[number, number], [number, number]];
-      const [[w, s], [e, n]] = Logic.expandBounds(geoBox, pad);
-      // Project all four corners (not just two diagonal ones) — geoEqualEarth
-      // isn't a rectilinear projection, so the padded lon/lat box's projected
-      // extent isn't just the projection of its two corners.
-      const corners: [number, number][] = [
-        [w, s],
-        [w, n],
-        [e, s],
-        [e, n],
-      ];
+      const px = projectBox(Logic.expandBounds(geoBox, pad));
+      if (!px) return;
+      const maxK = tinyIds.has(c.id) ? 7 : MAXK;
+      transform = fitBounds(px, VIEWPORT, 1.4, maxK);
+      notify();
+    },
+    frameRegion(members: Country[]) {
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (const corner of corners) {
-        const p = PROJ(corner);
-        if (!p || !isFinite(p[0]) || !isFinite(p[1])) continue;
-        x0 = Math.min(x0, p[0]);
-        y0 = Math.min(y0, p[1]);
-        x1 = Math.max(x1, p[0]);
-        y1 = Math.max(y1, p[1]);
+      for (const c of members) {
+        if (!c.feature) continue;
+        const px = projectBox(geoBounds(c.feature as never) as [[number, number], [number, number]]);
+        if (!px) continue;
+        x0 = Math.min(x0, px[0][0]);
+        y0 = Math.min(y0, px[0][1]);
+        x1 = Math.max(x1, px[1][0]);
+        y1 = Math.max(y1, px[1][1]);
       }
       if (!isFinite(x0) || !isFinite(y0) || !isFinite(x1) || !isFinite(y1)) return;
-      const maxK = tinyIds.has(c.id) ? 7 : MAXK;
-      transform = fitBounds([[x0, y0], [x1, y1]], VIEWPORT, 1.4, maxK);
+      // A little breathing room around the region, then fit — cap the zoom so a
+      // compact region (e.g. Europe) still shows with surrounding context.
+      const padX = (x1 - x0) * 0.08;
+      const padY = (y1 - y0) * 0.08;
+      transform = fitBounds([[x0 - padX, y0 - padY], [x1 + padX, y1 + padY]], VIEWPORT, 1, 6);
       notify();
     },
     markArrow(c: Country) {
@@ -133,12 +151,14 @@ export function createTvMapController(): TvMapController {
       notify();
     },
     flashSelect(id: string) {
-      paints.set(id, "sel");
+      paints = new Map(paints).set(id, "sel");
       notify();
       if (flashTimer) clearTimeout(flashTimer);
       flashTimer = setTimeout(() => {
         flashTimer = null;
-        paints.delete(id);
+        const next = new Map(paints);
+        next.delete(id);
+        paints = next;
         notify();
       }, 600);
     },
@@ -149,24 +169,6 @@ export function createTvMapController(): TvMapController {
     bind(onChange) {
       listeners.add(onChange);
       return () => listeners.delete(onChange);
-    },
-    panBy(dxPx, dyPx) {
-      transform = clampPan({ ...transform, tx: transform.tx + dxPx, ty: transform.ty + dyPx });
-      notify();
-    },
-    zoomToggle(cursorScreen) {
-      if (savedTransform) {
-        transform = savedTransform;
-        savedTransform = null;
-      } else {
-        savedTransform = transform;
-        transform = zoomAt(transform, cursorScreen, 3, MAXK);
-      }
-      notify();
-    },
-    screenToProjected({ x, y }) {
-      const { k, tx, ty } = transform;
-      return [(x - tx) / k, (y - ty) / k];
     },
   };
 }

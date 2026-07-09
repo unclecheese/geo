@@ -15,13 +15,14 @@ export const PROJ = geoEqualEarth().fitExtent(
   { type: "Sphere" }
 );
 
-export type PaintKind = "good" | "bad" | "target" | "sel";
+export type PaintKind = "good" | "bad" | "target" | "sel" | "region";
 
 const PAINT_COLOR: Record<PaintKind, string> = {
   good: theme.good,
   bad: theme.bad,
   target: theme.target,
   sel: theme.brass,
+  region: theme.forest, // dim group tint for the find region picker
 };
 
 export interface TvMapProps {
@@ -36,10 +37,9 @@ export interface TvMapProps {
  * border stroke uses `strokeWidth = 1 / k` so hairlines stay ~1px on screen at
  * any zoom — the same constant-width trick the web SVG uses.
  *
- * `memo`'d, and deliberately owns no cursor: the crosshair lives in a separate
- * CursorOverlay Canvas so pan samples repaint only that overlay, never this
- * ~470-node path tree. This Canvas re-renders only when transform/paints/boxes
- * actually change (paint, frame, zoom, pan) — not on cursor motion.
+ * `memo`'d so this ~470-node path tree re-renders only when transform/paints/
+ * boxes actually change (paint, frame, zoom) — hence the controller installs a
+ * fresh `paints` Map on every highlight change rather than mutating in place.
  */
 function TvMapImpl({ transform, paints, boxes }: TvMapProps) {
   const { k, tx, ty } = transform;
