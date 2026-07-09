@@ -20,18 +20,16 @@ import { Logic } from "./logic";
 // A. Nav regions
 // ---------------------------------------------------------------------------
 
+// Seven coarse regions (the finer 11-region split proved fussier than players
+// wanted to dpad through). Each map-askable country lands in exactly one.
 export type NavRegionId =
-  | "northAmerica"
-  | "latinAmerica"
-  | "europe"
-  | "westAsia"
-  | "centralSouthAsia"
-  | "eastSeAsia"
-  | "northAfrica"
-  | "westAfrica"
-  | "centralAfrica"
-  | "eastAfrica"
-  | "oceania";
+  | "northAmerica" // Northern America + Caribbean (Mexico sits here in this dataset)
+  | "latinAmerica" // Central + South America
+  | "africa" // all of Africa
+  | "europe" // all of Europe, minus Russia
+  | "eastAsia" // Russia + East + Central Asia + Nepal + mainland SE Asia
+  | "southAsiaMideast" // Western + Southern Asia (Middle East, Caucasus, subcontinent)
+  | "oceania"; // Australasia + Pacific + maritime SE Asia
 
 export interface NavRegion {
   id: NavRegionId;
@@ -41,50 +39,45 @@ export interface NavRegion {
   centroid: [number, number];
 }
 
-// Ordered roughly west→east, north→south — a sensible default reading order for
-// the region picker. Centroids are approximate mid-points of each region.
+// Ordered roughly west→east — a sensible default reading order for the region
+// picker. Centroids are approximate mid-points of each (large) region.
 export const NAV_REGIONS: NavRegion[] = [
   { id: "northAmerica", centroid: [-100, 40] },
-  { id: "latinAmerica", centroid: [-65, -15] },
+  { id: "latinAmerica", centroid: [-60, -15] },
   { id: "europe", centroid: [15, 52] },
-  { id: "northAfrica", centroid: [15, 27] },
-  { id: "westAfrica", centroid: [-5, 12] },
-  { id: "centralAfrica", centroid: [20, -10] },
-  { id: "eastAfrica", centroid: [38, 0] },
-  { id: "westAsia", centroid: [45, 30] },
-  { id: "centralSouthAsia", centroid: [72, 30] },
-  { id: "eastSeAsia", centroid: [115, 25] },
-  { id: "oceania", centroid: [160, -20] },
+  { id: "africa", centroid: [20, 3] },
+  { id: "southAsiaMideast", centroid: [62, 27] },
+  { id: "eastAsia", centroid: [100, 42] },
+  { id: "oceania", centroid: [135, -10] },
 ];
 
-// subregion → region. The mledoze 5.1.0 taxonomy is granular (six Europe
-// subregions, "North America" vs "Caribbean", etc.), which lets almost every
-// trans-continental country fall into a sensible home by subregion alone.
+// subregion → region base map. South-Eastern Asia is deliberately absent: it has
+// no clean rule (mainland goes east, maritime goes to Oceania), so every SE Asia
+// country is placed by explicit override below.
 const SUBREGION_TO_REGION: Record<string, NavRegionId> = {
   // Americas
-  "North America": "northAmerica",
+  "North America": "northAmerica", // includes Mexico in this dataset
   "Caribbean": "northAmerica",
   "Central America": "latinAmerica",
   "South America": "latinAmerica",
-  // Europe (all six mledoze buckets)
+  // Europe (all six mledoze buckets; Russia moved out by override)
   "Northern Europe": "europe",
   "Western Europe": "europe",
   "Central Europe": "europe",
-  "Eastern Europe": "europe", // includes Russia — grouped with Europe by convention
+  "Eastern Europe": "europe",
   "Southern Europe": "europe", // includes Cyprus in this dataset
   "Southeast Europe": "europe",
   // Asia
-  "Western Asia": "westAsia", // Middle East + Caucasus + Türkiye
-  "Central Asia": "centralSouthAsia",
-  "Southern Asia": "centralSouthAsia", // includes Iran here
-  "Eastern Asia": "eastSeAsia",
-  "South-Eastern Asia": "eastSeAsia",
-  // Africa (sub-Saharan split three ways so no dpad region exceeds ~17 members)
-  "Northern Africa": "northAfrica",
-  "Western Africa": "westAfrica",
-  "Middle Africa": "centralAfrica",
-  "Southern Africa": "centralAfrica",
-  "Eastern Africa": "eastAfrica",
+  "Eastern Asia": "eastAsia",
+  "Central Asia": "eastAsia", // Turkmenistan moved to southAsiaMideast by override
+  "Western Asia": "southAsiaMideast", // Middle East + Caucasus + Türkiye
+  "Southern Asia": "southAsiaMideast", // subcontinent + Iran; Nepal moved by override
+  // Africa (all merged into one region)
+  "Northern Africa": "africa",
+  "Western Africa": "africa",
+  "Middle Africa": "africa",
+  "Eastern Africa": "africa",
+  "Southern Africa": "africa",
   // Oceania
   "Australia and New Zealand": "oceania",
   "Melanesia": "oceania",
@@ -92,21 +85,37 @@ const SUBREGION_TO_REGION: Record<string, NavRegionId> = {
   "Polynesia": "oceania",
 };
 
-// Per-country home overrides (by cca3), for cases the subregion default gets
-// wrong. Empty today: in this dataset the trans-continental countries
-// (Russia→europe, Türkiye/Cyprus/Caucasus→westAsia|europe, Egypt→northAfrica,
-// Kazakhstan→centralSouthAsia) already land sensibly via subregion. Kept as the
-// documented extension point — membership is a discoverability choice, and
-// reachability is guaranteed per-region regardless of which home a country gets.
-const REGION_OVERRIDES: Record<string, NavRegionId> = {};
+// Per-country home overrides (by cca3). Two kinds: trans-continental moves, and
+// the per-country South-Eastern Asia split (no clean subregion rule). Membership
+// is a discoverability choice; reachability is guaranteed per-region regardless.
+const REGION_OVERRIDES: Record<string, NavRegionId> = {
+  MEX: "northAmerica", // no-op here (already "North America"), kept to pin intent
+  CYP: "europe", // no-op here (already "Southern Europe"), kept to pin intent
+  RUS: "eastAsia", // "Eastern Europe" by subregion, but its landmass reads east
+  TKM: "southAsiaMideast", // Central Asian, grouped with the subcontinent/Mideast
+  NPL: "eastAsia", // Himalayan neighbour of China/Tibet rather than the subcontinent
+  // South-Eastern Asia split — mainland to eastAsia:
+  THA: "eastAsia",
+  VNM: "eastAsia",
+  LAO: "eastAsia",
+  KHM: "eastAsia",
+  MMR: "eastAsia",
+  PHL: "eastAsia",
+  // …maritime to oceania:
+  MYS: "oceania",
+  IDN: "oceania",
+  SGP: "oceania",
+  BRN: "oceania",
+  TLS: "oceania",
+};
 
-// Fallback for the rare subregion not in the table: bucket by coarse `region`
-// so nothing is ever unassigned.
+// Fallback for a subregion not in the table (e.g. an as-yet-unlisted SE Asia
+// country) so nothing is ever unassigned.
 const REGION_FALLBACK: Record<string, NavRegionId> = {
   Americas: "latinAmerica",
   Europe: "europe",
-  Asia: "centralSouthAsia",
-  Africa: "eastAfrica",
+  Asia: "eastAsia",
+  Africa: "africa",
   Oceania: "oceania",
 };
 

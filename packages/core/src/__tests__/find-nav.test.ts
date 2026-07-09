@@ -93,7 +93,8 @@ describe("navRegionOf — partition", () => {
   });
 
   it("exposes a rough position for every region for dpad layout", () => {
-    expect(NAV_REGIONS.length).toBeGreaterThanOrEqual(10);
+    expect(NAV_REGIONS.length).toBe(7);
+    expect(new Set(NAV_REGIONS.map((r) => r.id)).size).toBe(7); // ids unique
     for (const r of NAV_REGIONS) {
       expect(r.centroid).toHaveLength(2);
       expect(Number.isFinite(r.centroid[0])).toBe(true);
