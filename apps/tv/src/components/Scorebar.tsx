@@ -1,27 +1,29 @@
 import { View, Text, StyleSheet } from "react-native";
-import { Logic, useQuizStore } from "@geobean/core";
+import { Logic, useAtlasStore, useQuizStore } from "@geobean/core";
 import { theme } from "../theme";
 import { fonts } from "../fonts";
 
 /**
- * Top-strip HUD for the map quiz: question counter, score, streak and elapsed
- * clock, read off the live `session` (asked/total/score/streak) plus the
- * store's `elapsedMs` stopwatch. tvOS render of web's #scorebar — same four
- * pills, parchment values on translucent navy, serif. Non-focusable: the remote
- * never lands here.
+ * Top-strip HUD: score, all-time accuracy, streak and elapsed clock — the tvOS
+ * render of web's #scorebar (apps/web/components/Scorebar.tsx). Score & streak
+ * come from the live `session`; accuracy is all-time from persisted stats; the
+ * clock is the store's `elapsedMs`. The question counter is NOT here — it lives
+ * in the card's `.q-top`, matching web's split. Non-focusable: the remote never
+ * lands here.
  */
 export function Scorebar() {
   const session = useQuizStore((s) => s.session);
   const elapsedMs = useQuizStore((s) => s.elapsedMs);
+  const stats = useAtlasStore((s) => s.stats);
 
   if (!session) return null;
 
-  const total = Number.isFinite(session.total) ? String(session.total) : "∞";
+  const acc = stats.answered ? Math.round((stats.correct / stats.answered) * 100) + "%" : "—";
 
   return (
     <View style={styles.bar} pointerEvents="none">
-      <Pill label="Question" value={`${session.asked} / ${total}`} />
       <Pill label="Score" value={String(session.score)} />
+      <Pill label="Accuracy" value={acc} />
       <Pill label="Streak" value={String(session.streak)} accent />
       <Pill label="Time" value={Logic.fmtDuration(elapsedMs)} />
     </View>

@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { DataLayer, pickCountryAt, setMapPort, useQuizStore } from "@geobean/core";
+import {
+  DataLayer,
+  Logic,
+  MODES,
+  pickCountryAt,
+  setMapPort,
+  useAtlasStore,
+  useQuizStore,
+} from "@geobean/core";
 import type { RootStackParamList } from "../navigation";
 import { createTvMapController, type TvMapState } from "../map/tv-map-controller";
 import { TvMap, PROJ } from "../map/TvMap";
@@ -10,12 +18,19 @@ import { CursorOverlay, type CursorOverlayHandle } from "../map/CursorOverlay";
 import { useRemoteInput } from "../input/useRemoteInput";
 import { useMenuButtonBack } from "../input/useMenuButtonBack";
 import { Scorebar } from "../components/Scorebar";
-import { HintPanel } from "../components/HintPanel";
+import {
+  QuizCard,
+  QPrompt,
+  Em,
+  QSub,
+  HintList,
+  HintButton,
+  HintNote,
+} from "../components/QuizCard";
 import { RevealCard } from "../components/RevealCard";
 import { ChoicesGrid } from "../components/ChoicesGrid";
 import { TypedAnswer } from "../components/TypedAnswer";
 import { theme } from "../theme";
-import { fonts } from "../fonts";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -83,7 +98,45 @@ export function MapQuizScreen() {
   const eliminatedIds = useQuizStore((s) => s.eliminatedIds);
   const revealedCount = useQuizStore((s) => s.revealedCount);
 
+  const session = useQuizStore((s) => s.session);
+  const difficult = useAtlasStore((s) => s.settings.quizDifficulty === "difficult");
+
   const cursorMode = mode === "find" && !answered;
+
+  // Derived HUD-card content, mirroring apps/web/app/map/page.tsx. The card is
+  // the single question surface now (no top-left banner): find shows a prompt +
+  // sub + escalating hint list; name shows the prompt + choices/typed + a hint.
+  const item = current?.item;
+
+  const findHints: string[] = [];
+  if (mode === "find" && item) {
+    if (hintLevel >= 1) findHints.push(`Region: ${item.region}`);
+    if (hintLevel >= 2 && item.subregion) findHints.push(`Subregion: ${item.subregion}`);
+    if (hintLevel >= 3) {
+      const names = item.neighbours.map((n) => n.name);
+      findHints.push(names.length ? `Borders: ${names.join(", ")}` : "Island — no land borders");
+    }
+  }
+
+  // Name-mode hint state (find hints come via the remote's Play/Pause, so the
+  // find card only shows a static note). Easy eliminates a wrong option; hard
+  // reveals a hangman letter — same exhaustion rules as web.
+  let hintUsed = false;
+  let hintExhausted = false;
+  if (mode === "name" && !difficult && item) {
+    hintUsed = eliminatedIds.length > 0;
+    hintExhausted = choices.every((c) => c.id === item.id || eliminatedIds.includes(c.id));
+  } else if (mode === "name" && difficult && item) {
+    hintUsed = revealedCount > 0;
+    hintExhausted = revealedCount >= Logic.hangmanReveals(item.name) + 1;
+  }
+  const nameHintLabel = hintExhausted
+    ? "No more hints"
+    : hintUsed
+      ? "Show another hint"
+      : "Show hint";
+
+  const kicker = mode ? MODES[mode].label : "—";
 
   // Boxes are static (laid out once by the controller), but they arrive with the
   // first bind notification — keep the latest in a ref so the click handler,
@@ -138,57 +191,61 @@ export function MapQuizScreen() {
       />
       <CursorOverlay ref={overlayRef} />
 
-      {current?.mode === "find" && !answered && (
-        <View style={styles.prompt} pointerEvents="none">
-          <Text style={styles.promptLabel}>Find</Text>
-          <Text style={styles.promptName}>{current.item.name}</Text>
-        </View>
-      )}
-
-      {current?.mode === "name" && !answered && (
-        <View style={styles.prompt} pointerEvents="none">
-          <Text style={styles.promptLabel}>Name the highlighted country</Text>
-        </View>
-      )}
-
       <Scorebar />
 
-      {current?.mode === "find" && !answered && (
-        <HintPanel item={current.item} hintLevel={hintLevel} />
-      )}
+      {/* The single web-style question card, anchored bottom-centre. In find
+          (cursor) mode it's pointer-transparent so it never steals the cursor
+          or blocks a map click behind it; in name mode it's interactive so the
+          focus engine can drive the choices grid / typed input. */}
+      {item && !answered && (
+        <View style={styles.hudWrap} pointerEvents={cursorMode ? "none" : "box-none"}>
+          <QuizCard kicker={kicker} asked={session?.asked ?? 0} total={session?.total ?? 0}>
+            {mode === "find" && (
+              <>
+                <QPrompt>
+                  Find <Em>{item.name}</Em> on the map
+                </QPrompt>
+                <QSub>Click the country (zoom in for small ones)</QSub>
+                <HintList hints={findHints} />
+                <HintNote label={hintLevel >= 3 ? "No more hints" : "Play/Pause for a hint"} />
+              </>
+            )}
 
-      {current?.mode === "name" && choices.length > 0 && (
-        <View style={styles.choicesBand} pointerEvents={answered ? "none" : "box-none"}>
-          <ChoicesGrid
-            choices={choices}
-            choiceResult={choiceResult}
-            eliminatedIds={eliminatedIds}
-            onChoose={(c) => useQuizStore.getState().handleChoice(c)}
-          />
-        </View>
-      )}
-
-      {current?.mode === "name" && choices.length === 0 && !answered && (
-        <View style={styles.typedBand}>
-          <TypedAnswer
-            mode="name"
-            item={current.item}
-            pool={DataLayer.countries}
-            revealedCount={revealedCount}
-            onSubmit={(t) => useQuizStore.getState().handleTyped(t)}
-          />
+            {mode === "name" && (
+              <>
+                <QPrompt>
+                  Name the <Em>highlighted</Em> country
+                </QPrompt>
+                <QSub>It&apos;s glowing on the map</QSub>
+                {choices.length > 0 ? (
+                  <ChoicesGrid
+                    choices={choices}
+                    choiceResult={choiceResult}
+                    eliminatedIds={eliminatedIds}
+                    onChoose={(c) => useQuizStore.getState().handleChoice(c)}
+                  />
+                ) : (
+                  <TypedAnswer
+                    mode="name"
+                    item={item}
+                    pool={DataLayer.countries}
+                    revealedCount={revealedCount}
+                    onSubmit={(t) => useQuizStore.getState().handleTyped(t)}
+                  />
+                )}
+                <HintButton
+                  label={nameHintLabel}
+                  disabled={hintExhausted}
+                  onPress={() => useQuizStore.getState().useHint()}
+                />
+              </>
+            )}
+          </QuizCard>
         </View>
       )}
 
       {answered && reveal && (
-        <RevealCard
-          reveal={reveal}
-          onNext={() => useQuizStore.getState().next()}
-          onEnd={() => {
-            useQuizStore.getState().quit();
-            nav.navigate("Menu");
-          }}
-        />
+        <RevealCard reveal={reveal} onNext={() => useQuizStore.getState().next()} />
       )}
     </View>
   );
@@ -196,36 +253,9 @@ export function MapQuizScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.sea },
-  prompt: {
+  hudWrap: {
     position: "absolute",
-    top: 40,
-    left: 56,
-    backgroundColor: "rgba(14, 31, 51, 0.82)",
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: theme.brass,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    zIndex: 20,
-  },
-  promptLabel: {
-    color: theme.creamDim,
-    fontSize: 16,
-    letterSpacing: 2,
-    fontVariant: ["small-caps"],
-  },
-  promptName: { color: theme.cream, fontSize: 40, fontFamily: fonts.displaySemi },
-  choicesBand: {
-    position: "absolute",
-    bottom: 48,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    zIndex: 20,
-  },
-  typedBand: {
-    position: "absolute",
-    bottom: 48,
+    bottom: 44,
     left: 0,
     right: 0,
     alignItems: "center",

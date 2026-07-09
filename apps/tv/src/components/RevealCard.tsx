@@ -1,74 +1,94 @@
-import { View, Text, Pressable, StyleSheet, type PressableStateCallbackType } from "react-native";
-import { Logic, type RevealState } from "@geobean/core";
+import { useState } from "react";
+import {
+  View,
+  Text,
+  Image,
+  Pressable,
+  StyleSheet,
+  type PressableStateCallbackType,
+} from "react-native";
+import { flagPng, type Country, type RevealState } from "@geobean/core";
 import { theme } from "../theme";
 import { fonts } from "../fonts";
 
 /**
- * Post-grade feedback overlay for the map quiz — the FOCUS-mode counterpart to
- * web's <Reveal>. Shows the verdict, country + capital · subregion, and a meta
- * line (region, border count, time), lifted from web's Reveal copy. Two
- * focusable buttons: Next (preferred focus, so the focus engine lands on it the
- * instant the reveal appears and Select advances) and End round. While this is
- * mounted the screen's cursorMode is false, so the remote drives focus here
- * instead of the map cursor.
+ * Post-grade feedback card — the 10-foot port of web's <Reveal> (see
+ * apps/web/components/Reveal.tsx). A parchment panel with the flag, country
+ * name and "Capital: X · subregion" on the left, a small-caps verdict top-right,
+ * a meta row (Region / Borders / Time), and a full-width brass "Next ▸" button
+ * that takes preferred focus so Select advances the instant the card appears.
+ * The panel's top edge is tinted good/bad to echo web's coloured box-shadow.
+ * (Quitting mid-round is the remote's Menu button — see useMenuButtonBack — so
+ * there's no separate End button here, matching web.)
  */
-export function RevealCard({
-  reveal,
-  onNext,
-  onEnd,
-}: {
-  reveal: RevealState;
-  onNext: () => void;
-  onEnd: () => void;
-}) {
+export function RevealCard({ reveal, onNext }: { reveal: RevealState; onNext: () => void }) {
   const { item, correct, ms } = reveal;
+
   const meta: string[] = [`Region: ${item.region}`];
   if (item.neighbours.length) meta.push(`Borders: ${item.neighbours.length}`);
   meta.push(`Time: ${(ms / 1000).toFixed(1)}s`);
 
+  const verdictColor = correct ? theme.good : theme.bad;
+
   return (
     <View style={styles.backdrop}>
-      <View style={[styles.card, { borderTopColor: correct ? theme.good : theme.bad }]}>
-        <Text style={[styles.verdict, { color: correct ? theme.good : theme.bad }]}>
-          {correct ? "✓ Correct" : "✕ Missed"}
-        </Text>
-        <Text style={styles.name}>{item.name}</Text>
-        <Text style={styles.cap}>
-          Capital: {item.capital || "—"} · {item.subregion || item.region}
-        </Text>
-        <Text style={styles.meta}>{meta.join("   ·   ")}</Text>
-
-        <View style={styles.row}>
-          <Button label="End round" onPress={onEnd} />
-          <Button label="Next ▸" onPress={onNext} preferred />
+      <View style={[styles.card, { borderTopColor: verdictColor }]}>
+        <View style={styles.head}>
+          <RevealFlag country={item} />
+          <View style={styles.headText}>
+            <Text style={styles.name}>{item.name}</Text>
+            <Text style={styles.cap}>
+              Capital: {item.capital || "—"} · {item.subregion || item.region}
+            </Text>
+          </View>
+          <Text style={[styles.verdict, { color: verdictColor }]}>
+            {correct ? "✓ Correct" : "✕ Missed"}
+          </Text>
         </View>
+
+        <View style={styles.metaRow}>
+          {meta.map((m) => (
+            <Text key={m} style={styles.meta}>
+              {m}
+            </Text>
+          ))}
+        </View>
+
+        <Pressable
+          onPress={onNext}
+          hasTVPreferredFocus
+          style={(state: PressableStateCallbackType) => [
+            styles.next,
+            state.focused && styles.nextFocused,
+          ]}
+        >
+          <Text style={styles.nextText}>Next ▸</Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
-function Button({
-  label,
-  onPress,
-  preferred,
-}: {
-  label: string;
-  onPress: () => void;
-  preferred?: boolean;
-}) {
+/** Small flag chip (web's `.rv-flag` / `.rv-flag-ph`). Falls back to the emoji
+ *  or a flag glyph if the PNG is missing or fails to load. */
+function RevealFlag({ country }: { country: Country }) {
+  const [failed, setFailed] = useState(false);
+  const uri = flagPng(country);
+
+  if (!uri || failed) {
+    return (
+      <View style={styles.flagPh}>
+        <Text style={styles.flagPhText}>{country.flagEmoji || "🏳"}</Text>
+      </View>
+    );
+  }
   return (
-    <Pressable
-      onPress={onPress}
-      hasTVPreferredFocus={preferred}
-      style={(state: PressableStateCallbackType) => [
-        preferred ? styles.btnPrimary : styles.btnSecondary,
-        state.focused && (preferred ? styles.btnPrimaryFocused : styles.btnSecondaryFocused),
-      ]}
-    >
-      <Text style={[styles.btnText, preferred ? styles.btnTextPrimary : styles.btnTextSecondary]}>
-        {label}
-      </Text>
-    </Pressable>
+    <Image
+      source={{ uri }}
+      style={styles.flag}
+      resizeMode="contain"
+      onError={() => setFailed(true)}
+    />
   );
 }
 
@@ -81,38 +101,64 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
   card: {
-    width: 760,
-    backgroundColor: theme.parchment,
+    width: 920,
+    backgroundColor: theme.parchment2,
     borderRadius: 16,
     borderTopWidth: 6,
+    borderTopColor: theme.brass,
     paddingVertical: 36,
-    paddingHorizontal: 48,
+    paddingHorizontal: 44,
+    shadowColor: "#06101c",
+    shadowOpacity: 0.42,
+    shadowRadius: 40,
+    shadowOffset: { width: 0, height: 16 },
+  },
+  head: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 22,
+  },
+  flag: {
+    width: 150,
+    height: 100,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: theme.hair,
+  },
+  flagPh: {
+    width: 150,
+    height: 100,
+    borderRadius: 6,
+    backgroundColor: theme.parchmentInset,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  flagPhText: { fontSize: 56 },
+  headText: { flex: 1 },
+  name: { color: theme.ink, fontSize: 54, fontFamily: fonts.displaySemi },
+  cap: { color: theme.inkDim, fontSize: 26, fontFamily: fonts.body, marginTop: 4 },
+  verdict: {
+    fontSize: 26,
+    fontFamily: fonts.bodySemi,
+    fontVariant: ["small-caps"],
+    letterSpacing: 1,
+  },
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 28,
+    marginTop: 22,
+  },
+  meta: { color: theme.inkFaint, fontSize: 22, fontFamily: fonts.body },
+  next: {
+    marginTop: 30,
+    backgroundColor: theme.brass,
+    borderRadius: 12,
+    borderWidth: 3,
+    borderColor: "transparent",
+    paddingVertical: 20,
     alignItems: "center",
   },
-  verdict: { fontSize: 26, fontWeight: "700", letterSpacing: 1, marginBottom: 8 },
-  name: { color: theme.ink, fontSize: 52, fontFamily: fonts.displaySemi },
-  cap: { color: theme.inkDim, fontSize: 24, fontFamily: fonts.body, marginTop: 6 },
-  meta: { color: theme.inkFaint, fontSize: 18, marginTop: 14 },
-  row: { flexDirection: "row", gap: 20, marginTop: 32 },
-  btnPrimary: {
-    backgroundColor: theme.brass,
-    borderRadius: 10,
-    borderWidth: 3,
-    borderColor: "transparent",
-    paddingVertical: 14,
-    paddingHorizontal: 44,
-  },
-  btnPrimaryFocused: { borderColor: theme.ink, transform: [{ scale: 1.08 }] },
-  btnSecondary: {
-    backgroundColor: theme.parchmentInset,
-    borderRadius: 10,
-    borderWidth: 3,
-    borderColor: "transparent",
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-  },
-  btnSecondaryFocused: { borderColor: theme.brass, transform: [{ scale: 1.08 }] },
-  btnText: { fontSize: 24, fontWeight: "700" },
-  btnTextPrimary: { color: theme.cream },
-  btnTextSecondary: { color: theme.ink },
+  nextFocused: { borderColor: theme.ink, transform: [{ scale: 1.03 }] },
+  nextText: { color: theme.cream, fontSize: 32, fontFamily: fonts.displaySemi },
 });

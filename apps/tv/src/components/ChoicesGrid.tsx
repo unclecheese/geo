@@ -60,7 +60,8 @@ export function ChoicesGrid({
               style={[
                 styles.label,
                 isEliminated && !answered && styles.labelEliminated,
-                (isCorrect || isWrong) && styles.labelMarked,
+                isCorrect && styles.labelCorrect,
+                isWrong && styles.labelWrong,
               ]}
             >
               {labelFor ? labelFor(c) : c.name}
@@ -72,51 +73,62 @@ export function ChoicesGrid({
   );
 }
 
+// Verdict tints, lifted from web's --good-tint / --bad-tint and the dark
+// green/red choice text (#1f5236 / #6f2418), nudged a touch more opaque so the
+// fill still reads from ten feet.
+const GOOD_TINT = "rgba(47, 111, 78, 0.18)";
+const BAD_TINT = "rgba(166, 64, 44, 0.16)";
+const GOOD_INK = "#1f5236";
+const BAD_INK = "#6f2418";
+
 const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    width: 720,
+    width: 840,
     gap: 16,
     justifyContent: "center",
+    marginTop: 24,
   },
   choice: {
-    width: 340,
-    backgroundColor: theme.parchment,
-    borderRadius: 12,
-    borderWidth: 3,
-    borderColor: "transparent",
-    paddingVertical: 20,
-    paddingHorizontal: 24,
-    alignItems: "center",
+    width: 412,
+    backgroundColor: theme.parchment2,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: theme.hair,
+    paddingVertical: 22,
+    paddingHorizontal: 26,
   },
   choiceFocused: {
+    backgroundColor: "#fffdf6",
     borderColor: theme.brass,
     transform: [{ scale: 1.06 }],
   },
   choiceEliminated: {
-    backgroundColor: theme.parchmentInset,
-    opacity: 0.45,
+    opacity: 0.4,
   },
   choiceCorrect: {
-    backgroundColor: theme.good,
+    backgroundColor: GOOD_TINT,
     borderColor: theme.good,
   },
   choiceWrong: {
-    backgroundColor: theme.bad,
+    backgroundColor: BAD_TINT,
     borderColor: theme.bad,
   },
   label: {
     color: theme.ink,
-    fontSize: 26,
+    fontSize: 28,
     fontFamily: fonts.bodySemi,
-    textAlign: "center",
+    textAlign: "left",
   },
   labelEliminated: {
     color: theme.inkFaint,
     textDecorationLine: "line-through",
   },
-  labelMarked: {
-    color: theme.cream,
+  labelCorrect: {
+    color: GOOD_INK,
+  },
+  labelWrong: {
+    color: BAD_INK,
   },
 });
