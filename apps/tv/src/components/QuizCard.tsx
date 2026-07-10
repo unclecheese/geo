@@ -19,14 +19,14 @@ import { fonts } from "../fonts";
  * - `"card"` (default, expert screen): a centred parchment panel — a `.q-top`
  *   header (kicker left, "asked / total" right), a brass `.q-bar`, then the
  *   `children` (prompt/sub/flag/controls) stacked inside.
- * - `"bar"` (map screen): web's redesigned full-width bar flush to the bottom
- *   edge — a progress hairline flush along the very top, then a centred
- *   max-width inner column with Row 1 = kicker + count, Row 2 (`.q-head`) = the
- *   `body` (prompt + sub) on the LEFT and the low-key `hint` affordance on the
- *   RIGHT, and the `children` (find hint-list / name choices / typed) below at a
- *   contained width. Height is content-driven: compact for find, growing for
- *   name. Positioning is the screen's job (the map screen anchors it flush to
- *   the bottom); this component carries no absolute position of its own.
+ * - `"bar"` (map screen): web's redesigned HUD — a wide (90%) rounded card
+ *   floating just off the bottom edge, with a progress-pill on its flat top edge
+ *   (inset from the corners), then Row 1 = kicker + count and Row 2 (`.q-head`)
+ *   = the `body` (prompt + sub) on the LEFT and the low-key `hint` affordance on
+ *   the RIGHT, and the `children` (find hint-list / name choices / typed) below
+ *   at a contained width. Height is content-driven: compact for find, growing
+ *   for name. Positioning (width, centring, bottom float) is the screen's job;
+ *   this component carries no absolute position of its own.
  *
  * The body helpers below (`QPrompt`, `Em`, `QSub`, `Hangman`, `HintList`,
  * `HintButton`, `HintNote`) mirror web's `.q-prompt`/`.em`/`.q-sub`/`.hangman`/
@@ -194,38 +194,37 @@ const styles = StyleSheet.create({
     shadowRadius: 40,
     shadowOffset: { width: 0, height: 16 },
   },
-  // Map-screen "bar" variant: full-width, flush to the bottom edge, rounded top
-  // corners only, top hairline + an upward shadow so it lifts off the map.
+  // Map-screen "bar" variant: a wide (90%) rounded card floating just off the
+  // bottom edge (positioned by the screen's hudWrap), all corners rounded, a
+  // hairline border all round and a soft downward shadow — the map reads around
+  // it. Width/float/centre live in the screen; this carries the card look.
   bar: {
-    width: "100%",
+    width: "90%",
     backgroundColor: theme.parchment,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderTopWidth: 1,
-    borderTopColor: theme.stroke,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: theme.stroke,
     shadowColor: "#06101c",
-    shadowOpacity: 0.38,
-    shadowRadius: 40,
-    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.42,
+    shadowRadius: 34,
+    shadowOffset: { width: 0, height: 12 },
   },
-  // Progress hairline: flush top strip, full width, clipped to the rounded top.
+  // Progress hairline: a pill on the flat top edge, inset by the corner radius
+  // so its rounded ends sit on the straight part and never hit the curves.
   barProgress: {
     height: 6,
-    width: "100%",
+    marginTop: 18,
+    marginHorizontal: 28,
+    borderRadius: 999,
     backgroundColor: theme.parchmentInset,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
     overflow: "hidden",
   },
   barProgressFill: { height: 6, backgroundColor: theme.brass },
-  // Centred max-width content column (web's .hud-inner).
+  // Content column (web's .hud-inner) — just fills the card with padding.
   inner: {
-    width: "100%",
-    maxWidth: 1440,
-    alignSelf: "center",
-    paddingTop: 20,
-    paddingHorizontal: 56,
-    paddingBottom: 28,
+    paddingTop: 12,
+    paddingHorizontal: 46,
+    paddingBottom: 30,
   },
   qHead: {
     flexDirection: "row",

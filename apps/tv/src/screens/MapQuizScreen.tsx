@@ -351,12 +351,13 @@ export function MapQuizScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.sea },
   hudWrap: {
-    // The HUD is now a full-width bar flush to the bottom edge (see QuizCard's
-    // "bar" variant) — no gutter, no centring; the bar spans the whole width.
+    // The HUD is a wide (90%) rounded card floating just off the bottom edge
+    // (see QuizCard's "bar" variant): centre it and leave a visible gap below.
     position: "absolute",
-    bottom: 0,
+    bottom: 28,
     left: 0,
     right: 0,
+    alignItems: "center",
     zIndex: 20,
   },
 });
