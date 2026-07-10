@@ -279,51 +279,63 @@ export function MapQuizScreen() {
           drive the choices grid / typed input. */}
       {item && !answered && (
         <View style={styles.hudWrap} pointerEvents={findActive ? "none" : "box-none"}>
-          <QuizCard kicker={kicker} asked={session?.asked ?? 0} total={session?.total ?? 0}>
-            {mode === "find" && (
-              <>
-                <QPrompt>
-                  Find <Em>{item.name}</Em> on the map
-                </QPrompt>
-                <QSub>
-                  {stage === "region"
-                    ? "Pick the region it's in"
-                    : "Navigate to the country, then select"}
-                </QSub>
-                <HintList hints={findHints} />
+          <QuizCard
+            variant="bar"
+            kicker={kicker}
+            asked={session?.asked ?? 0}
+            total={session?.total ?? 0}
+            body={
+              mode === "find" ? (
+                <>
+                  <QPrompt>
+                    Find <Em>{item.name}</Em> on the map
+                  </QPrompt>
+                  <QSub>
+                    {stage === "region"
+                      ? "Pick the region it's in"
+                      : "Navigate to the country, then select"}
+                  </QSub>
+                </>
+              ) : (
+                <>
+                  <QPrompt>
+                    Name the <Em>highlighted</Em> country
+                  </QPrompt>
+                  <QSub>It&apos;s glowing on the map</QSub>
+                </>
+              )
+            }
+            hint={
+              mode === "find" ? (
                 <HintNote label={hintLevel >= 3 ? "No more hints" : "Play/Pause for a hint"} />
-              </>
-            )}
-
-            {mode === "name" && (
-              <>
-                <QPrompt>
-                  Name the <Em>highlighted</Em> country
-                </QPrompt>
-                <QSub>It&apos;s glowing on the map</QSub>
-                {choices.length > 0 ? (
-                  <ChoicesGrid
-                    choices={choices}
-                    choiceResult={choiceResult}
-                    eliminatedIds={eliminatedIds}
-                    onChoose={(c) => useQuizStore.getState().handleChoice(c)}
-                  />
-                ) : (
-                  <TypedAnswer
-                    mode="name"
-                    item={item}
-                    pool={DataLayer.countries}
-                    revealedCount={revealedCount}
-                    onSubmit={(t) => useQuizStore.getState().handleTyped(t)}
-                  />
-                )}
+              ) : (
                 <HintButton
                   label={nameHintLabel}
                   disabled={hintExhausted}
                   onPress={() => useQuizStore.getState().useHint()}
+                  inline
                 />
-              </>
-            )}
+              )
+            }
+          >
+            {mode === "find" && findHints.length > 0 && <HintList hints={findHints} />}
+            {mode === "name" &&
+              (choices.length > 0 ? (
+                <ChoicesGrid
+                  choices={choices}
+                  choiceResult={choiceResult}
+                  eliminatedIds={eliminatedIds}
+                  onChoose={(c) => useQuizStore.getState().handleChoice(c)}
+                />
+              ) : (
+                <TypedAnswer
+                  mode="name"
+                  item={item}
+                  pool={DataLayer.countries}
+                  revealedCount={revealedCount}
+                  onSubmit={(t) => useQuizStore.getState().handleTyped(t)}
+                />
+              ))}
           </QuizCard>
         </View>
       )}
@@ -338,11 +350,12 @@ export function MapQuizScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.sea },
   hudWrap: {
+    // The HUD is now a full-width bar flush to the bottom edge (see QuizCard's
+    // "bar" variant) — no gutter, no centring; the bar spans the whole width.
     position: "absolute",
-    bottom: 44,
+    bottom: 0,
     left: 0,
     right: 0,
-    alignItems: "center",
     zIndex: 20,
   },
 });

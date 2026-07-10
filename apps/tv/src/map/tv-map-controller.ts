@@ -23,12 +23,14 @@ const IDENTITY: MapTransform = { k: 1, tx: 0, ty: 0 };
 const ARROW_ANGLE = 0;
 
 // The band of the 1920×1080 map NOT covered by HUD chrome: the Scorebar strip
-// along the top and the QuizCard overlay anchored to the bottom. Find framing
-// fits regions into this rect, and pan-follow keeps the current country inside
-// it, so nothing the player is looking at ever hides behind the chrome. The
-// bottom inset tracks the card's default (no-hints) height — expanding hints
-// grow it further, but those are opt-in and carry their own text.
-const SAFE = { top: 140, bottom: 400, left: 90, right: 90 };
+// along the top and the QuizCard bar flush to the bottom. Find framing fits
+// regions into this rect, and pan-follow keeps the current country inside it, so
+// nothing the player is looking at ever hides behind the chrome. The bottom
+// inset tracks the compact find-mode bar's height (progress + two rows +
+// padding ≈ 180) plus a small margin — an expanded find hint-list or the
+// name-mode choices/typed grid can still grow the bar past it, but those are
+// opt-in / name-only (find is the mode that frames regions).
+const SAFE = { top: 140, bottom: 220, left: 90, right: 90 };
 const safeRect = () => ({
   x0: SAFE.left,
   y0: SAFE.top,

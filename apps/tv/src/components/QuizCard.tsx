@@ -13,14 +13,20 @@ import { fonts } from "../fonts";
 
 /**
  * The web-style question card — the 10-foot port of web's `#hud` / `.quiz-stage`
- * (see apps/web/app/map/page.tsx and apps/web/app/quiz/page.tsx). A parchment
- * panel with a `.q-top` header (mode kicker left, "asked / total" progress
- * right), a brass `.q-bar` progress bar, then whatever body + controls the
- * screen stacks inside it. Find / name / capital / flag all share this frame;
- * only the body (prompt/sub/hangman/hints) and controls (choices/typed/hint)
- * differ. Positioning is the screen's job — the map screen anchors it bottom
- * centre, the expert screen centres it — so this component carries no layout
- * position of its own.
+ * (see apps/web/app/map/page.tsx and apps/web/app/quiz/page.tsx). Two layouts,
+ * picked by `variant`:
+ *
+ * - `"card"` (default, expert screen): a centred parchment panel — a `.q-top`
+ *   header (kicker left, "asked / total" right), a brass `.q-bar`, then the
+ *   `children` (prompt/sub/flag/controls) stacked inside.
+ * - `"bar"` (map screen): web's redesigned full-width bar flush to the bottom
+ *   edge — a progress hairline flush along the very top, then a centred
+ *   max-width inner column with Row 1 = kicker + count, Row 2 (`.q-head`) = the
+ *   `body` (prompt + sub) on the LEFT and the low-key `hint` affordance on the
+ *   RIGHT, and the `children` (find hint-list / name choices / typed) below at a
+ *   contained width. Height is content-driven: compact for find, growing for
+ *   name. Positioning is the screen's job (the map screen anchors it flush to
+ *   the bottom); this component carries no absolute position of its own.
  *
  * The body helpers below (`QPrompt`, `Em`, `QSub`, `Hangman`, `HintList`,
  * `HintButton`, `HintNote`) mirror web's `.q-prompt`/`.em`/`.q-sub`/`.hangman`/
@@ -30,18 +36,47 @@ export function QuizCard({
   kicker,
   asked,
   total,
+  variant = "card",
+  body,
+  hint,
   style,
   children,
 }: {
   kicker: string;
   asked: number;
   total: number;
+  variant?: "card" | "bar";
+  body?: ReactNode;
+  hint?: ReactNode;
   style?: StyleProp<ViewStyle>;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   const endless = !Number.isFinite(total);
   const progressText = `${asked} / ${endless ? "∞" : total}`;
   const pct = endless || total <= 0 ? 0 : Math.round((asked / total) * 100);
+
+  if (variant === "bar") {
+    return (
+      <View style={styles.bar}>
+        {/* Progress hairline flush along the top edge, full bar width. */}
+        <View style={styles.barProgress}>
+          <View style={[styles.barProgressFill, { width: `${pct}%` }]} />
+        </View>
+        <View style={styles.inner}>
+          <View style={styles.qTop}>
+            <Text style={styles.qMode}>{kicker}</Text>
+            <Text style={styles.qProgress}>{progressText}</Text>
+          </View>
+          {/* Row 2: prompt/sub on the left, hint on the right, centred. */}
+          <View style={styles.qHead}>
+            <View style={styles.qHeadBody}>{body}</View>
+            {hint ? <View style={styles.qHeadHint}>{hint}</View> : null}
+          </View>
+          {children ? <View style={styles.barControls}>{children}</View> : null}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.card, style]}>
@@ -100,16 +135,20 @@ export function HintButton({
   label,
   disabled,
   onPress,
+  inline,
 }: {
   label: string;
   disabled?: boolean;
   onPress: () => void;
+  /** In the map "bar" HUD the button sits in the centred q-head hint slot, so
+   *  drop the stacked top margin the expert card wants. */
+  inline?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={styles.hintBtnHit}
+      style={[styles.hintBtnHit, inline && styles.hintBtnHitInline]}
     >
       {(state: PressableStateCallbackType) => (
         <Text
@@ -134,7 +173,7 @@ export function HintButton({
  */
 export function HintNote({ label }: { label: string }) {
   return (
-    <Text style={[styles.hintBtn, styles.hintNote]}>
+    <Text style={styles.hintBtn}>
       {"💡 "}
       {label}
     </Text>
@@ -155,6 +194,50 @@ const styles = StyleSheet.create({
     shadowRadius: 40,
     shadowOffset: { width: 0, height: 16 },
   },
+  // Map-screen "bar" variant: full-width, flush to the bottom edge, rounded top
+  // corners only, top hairline + an upward shadow so it lifts off the map.
+  bar: {
+    width: "100%",
+    backgroundColor: theme.parchment,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderTopColor: theme.stroke,
+    shadowColor: "#06101c",
+    shadowOpacity: 0.38,
+    shadowRadius: 40,
+    shadowOffset: { width: 0, height: -12 },
+  },
+  // Progress hairline: flush top strip, full width, clipped to the rounded top.
+  barProgress: {
+    height: 6,
+    width: "100%",
+    backgroundColor: theme.parchmentInset,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: "hidden",
+  },
+  barProgressFill: { height: 6, backgroundColor: theme.brass },
+  // Centred max-width content column (web's .hud-inner).
+  inner: {
+    width: "100%",
+    maxWidth: 1440,
+    alignSelf: "center",
+    paddingTop: 20,
+    paddingHorizontal: 56,
+    paddingBottom: 28,
+  },
+  qHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 28,
+  },
+  qHeadBody: { flex: 1, flexShrink: 1 },
+  qHeadHint: { flexShrink: 0 },
+  // Controls (find hint-list / name choices / typed): below the head, left-
+  // aligned at a readable width rather than stretched across the whole bar.
+  barControls: { width: "100%", maxWidth: 900, alignSelf: "flex-start", marginTop: 14 },
   qTop: {
     flexDirection: "row",
     alignItems: "center",
@@ -235,6 +318,9 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginTop: 22,
   },
+  hintBtnHitInline: {
+    marginTop: 0,
+  },
   hintBtn: {
     color: theme.inkFaint,
     fontSize: 24,
@@ -250,9 +336,5 @@ const styles = StyleSheet.create({
   },
   hintBtnDisabled: {
     opacity: 0.4,
-  },
-  hintNote: {
-    marginTop: 22,
-    alignSelf: "center",
   },
 });
