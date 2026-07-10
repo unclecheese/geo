@@ -25,6 +25,16 @@ const BOX_PAD = 8;
 const BOX_MAX_HALF = 16;
 const BOX_MIN_HALF = 4;
 
+// A tiny country WITH a land border (an enclave, not an island) earns a click
+// box only when its largest landmass projects smaller than this half-extent at
+// the reference scale — i.e. it's effectively unclickable as a bare polygon.
+// The value sits in the gap between Andorra (~0.55 ref px, included) and Hong
+// Kong (~0.86, excluded): the genuinely invisible microstates (Vatican, Monaco,
+// Macau, San Marino, Sint Maarten, Saint Martin, Liechtenstein, Andorra) get a
+// box, while small-but-visible neighbours (Hong Kong, Luxembourg, …) keep using
+// their own polygon so their box never steals the host's clicks.
+const ENCLAVE_MAX_HALF = 0.7;
+
 // The projected area (px²) and bounding box of a feature's largest polygon —
 // its biggest single landmass on screen. Used both to decide whether a country
 // is a tiny island and to frame the outline box on that landmass (not the whole
@@ -118,8 +128,8 @@ function largestPolygonSphericalArea(feature: Feature): number | null {
 }
 
 /** Padded, mutually non-overlapping, coast-clamped outline boxes for tiny
- *  islands, in projected (unzoomed) coordinates. Lifted verbatim from
- *  map-view.ts init — including coastVertices. */
+ *  islands and sub-pixel enclaves, in projected (unzoomed) coordinates. Lifted
+ *  from map-view.ts init — including coastVertices. */
 export function layoutTinyBoxes(
   countries: Country[],
   tinyIds: Set<string>,
@@ -135,11 +145,11 @@ export function layoutTinyBoxes(
   const boxPad = BOX_PAD * scale;
   const boxMaxHalf = BOX_MAX_HALF * scale;
   const boxMinHalf = BOX_MIN_HALF * scale;
+  const enclaveMaxHalf = ENCLAVE_MAX_HALF * scale;
 
   const islands: { c: Country; cx: number; cy: number; desired: number }[] = [];
   for (const c of countries) {
     if (!tinyIds.has(c.id)) continue;
-    if ((c._borders?.length ?? 0) !== 0) continue; // only tiny ISLANDS get a box
     if (!c.centroid) continue;
     const p = projection(c.centroid);
     if (!p || !isFinite(p[0]) || !isFinite(p[1])) continue;
@@ -155,6 +165,12 @@ export function layoutTinyBoxes(
       cy = (y0 + y1) / 2;
       extent = Math.max(x1 - x0, y1 - y0) / 2;
     }
+    // A tiny ISLAND (no land border) always gets a box — it sits over open
+    // ocean, so it steals no clicks. A tiny country WITH a land border gets one
+    // only when its largest landmass is sub-pixel enough (< enclaveMaxHalf) to
+    // be an unclickable enclave; its box overlaps the host, so the tight gate
+    // keeps clickable small neighbours resolving through their own polygon.
+    if ((c._borders?.length ?? 0) !== 0 && !(extent > 0 && extent < enclaveMaxHalf)) continue;
     islands.push({ c, cx, cy, desired: Math.min(extent + boxPad, boxMaxHalf) });
   }
 

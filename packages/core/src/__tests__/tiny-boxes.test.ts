@@ -29,6 +29,12 @@ function square(cx: number, cy: number, half: number): Polygon {
 const contFeature: Feature = { type: "Feature", properties: {}, geometry: square(0, 0, 3) };
 const islandAFeature: Feature = { type: "Feature", properties: {}, geometry: square(60, 10, 0.05) };
 const islandBFeature: Feature = { type: "Feature", properties: {}, geometry: square(65, 10, 0.05) };
+// A sub-pixel ENCLAVE: same tiny landmass as an island but WITH a land border.
+// Effectively unclickable as a bare polygon, so it earns a box (host-overlapping).
+const enclaveFeature: Feature = { type: "Feature", properties: {}, geometry: square(70, 10, 0.05) };
+// A small-but-clickable bordered country: still tiny by area, but its landmass
+// projects large enough (> ENCLAVE_MAX_HALF) to click directly — no box.
+const smallFeature: Feature = { type: "Feature", properties: {}, geometry: square(-40, 0, 0.4) };
 
 function makeCountry(id: string, feat: Feature, borders: string[]): Country {
   return {
@@ -46,8 +52,10 @@ function makeCountry(id: string, feat: Feature, borders: string[]): Country {
 const continent = makeCountry("CONT", contFeature, ["OTH"]); // has a land border: not "tiny island"
 const islandA = makeCountry("ISLA", islandAFeature, []); // no land border: tiny island
 const islandB = makeCountry("ISLB", islandBFeature, []); // no land border: tiny island
+const enclave = makeCountry("ENCL", enclaveFeature, ["CONT"]); // bordered + sub-pixel: enclave, gets a box
+const small = makeCountry("SMAL", smallFeature, ["OTH"]); // bordered + tiny but clickable: no box
 
-const countries: Country[] = [continent, islandA, islandB];
+const countries: Country[] = [continent, islandA, islandB, enclave, small];
 
 const projection: GeoProjection = geoEqualEarth().fitExtent(
   [
@@ -58,10 +66,12 @@ const projection: GeoProjection = geoEqualEarth().fitExtent(
 );
 
 describe("computeTinyIds", () => {
-  it("flags only the tiny islands, not the continental country", () => {
+  it("flags every tiny landmass, island or bordered, not the continental country", () => {
     const tinyIds = computeTinyIds(countries);
     expect(tinyIds.has("ISLA")).toBe(true);
     expect(tinyIds.has("ISLB")).toBe(true);
+    expect(tinyIds.has("ENCL")).toBe(true);
+    expect(tinyIds.has("SMAL")).toBe(true); // small enough to be "tiny", but big enough to click
     expect(tinyIds.has("CONT")).toBe(false);
   });
 });
@@ -70,8 +80,10 @@ describe("layoutTinyBoxes", () => {
   const tinyIds = computeTinyIds(countries);
   const boxes = layoutTinyBoxes(countries, tinyIds, projection);
 
-  it("returns one box per tiny ISLAND (continent excluded, has a land border)", () => {
-    expect(boxes.map((b) => b.id).sort()).toEqual(["ISLA", "ISLB"]);
+  it("boxes the tiny islands and the sub-pixel enclave, but not the clickable small country or the continent", () => {
+    // ENCL is bordered yet sub-pixel → gets a (host-overlapping) box; SMAL is
+    // bordered and tiny-by-area but projects large enough to click → no box.
+    expect(boxes.map((b) => b.id).sort()).toEqual(["ENCL", "ISLA", "ISLB"]);
   });
 
   it("boxes are pairwise non-overlapping (AABB check)", () => {
@@ -85,9 +97,9 @@ describe("layoutTinyBoxes", () => {
     }
   });
 
-  it("each box contains its island's projected centroid within padding", () => {
+  it("each box contains its landmass's projected centroid within padding", () => {
     const byId = new Map(boxes.map((b) => [b.id, b]));
-    for (const c of [islandA, islandB]) {
+    for (const c of [islandA, islandB, enclave]) {
       const box = byId.get(c.id)!;
       const p = projection(c.centroid as [number, number])!;
       expect(p[0]).toBeGreaterThanOrEqual(box.x);
@@ -109,6 +121,13 @@ describe("resolvePoint", () => {
     const pt: [number, number] = [box.x + box.w / 2, box.y + box.h / 2];
     const result = resolvePoint(pt, boxes, countries, projection, MAX_DIST);
     expect(result?.id).toBe("ISLA");
+  });
+
+  it("resolves a point inside the enclave's box to the enclave, not its host", () => {
+    const box = boxes.find((b) => b.id === "ENCL")!;
+    const pt: [number, number] = [box.x + box.w / 2, box.y + box.h / 2];
+    const result = resolvePoint(pt, boxes, countries, projection, MAX_DIST);
+    expect(result?.id).toBe("ENCL");
   });
 
   it("resolves a point between the boxes to the nearest centroid", () => {
