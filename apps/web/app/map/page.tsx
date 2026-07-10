@@ -180,38 +180,49 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* Quiz HUD — question card anchored at bottom-centre */}
+      {/* Quiz HUD — full-width bar flush to the bottom edge */}
       <div id="hud" className={hudHidden ? "hidden" : ""}>
-        <div className="q-top">
-          <span className="q-mode">{mode ? MODES[mode].label : "—"}</span>
-          <span className="q-progress">{progressText}</span>
-        </div>
         <div className="q-bar" aria-hidden>
           <div className="q-bar-fill" style={{ width: progressPct }} />
         </div>
 
-        <div id="q-body">
-          {item && mode === "find" && (
-            <>
-              <div className="q-prompt">
-                Find <span className="em">{item.name}</span> on the map
-              </div>
-              <div className="q-sub">Click the country (zoom in for small ones)</div>
-            </>
-          )}
-          {item && mode === "name" && (
-            <>
-              <div className="q-prompt">
-                Name the <span className="em">highlighted</span> country
-              </div>
-              <div className="q-sub">It&apos;s glowing on the map</div>
-              {difficult && revealedCount > 0 && (
-                <div className="hangman" aria-label="Answer letters">
-                  {Logic.revealName(item.name, revealedCount - 1)}
-                </div>
+        <div className="hud-inner">
+          <div className="q-top">
+            <span className="q-mode">{mode ? MODES[mode].label : "—"}</span>
+            <span className="q-progress">{progressText}</span>
+          </div>
+
+          <div className="q-head">
+            <div id="q-body">
+              {item && mode === "find" && (
+                <>
+                  <div className="q-prompt">
+                    Find <span className="em">{item.name}</span> on the map
+                  </div>
+                  <div className="q-sub">Click the country (zoom in for small ones)</div>
+                </>
               )}
-            </>
-          )}
+              {item && mode === "name" && (
+                <>
+                  <div className="q-prompt">
+                    Name the <span className="em">highlighted</span> country
+                  </div>
+                  <div className="q-sub">It&apos;s glowing on the map</div>
+                  {difficult && revealedCount > 0 && (
+                    <div className="hangman" aria-label="Answer letters">
+                      {Logic.revealName(item.name, revealedCount - 1)}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {canHint && (
+              <button className="hint-btn" onClick={useHint} disabled={hintExhausted}>
+                💡 {hintExhausted ? "No more hints" : hintLabel}
+              </button>
+            )}
+          </div>
+
           {findHints.length > 0 && (
             <ul className="hint-list">
               {findHints.map((h) => (
@@ -219,30 +230,27 @@ export default function MapPage() {
               ))}
             </ul>
           )}
-        </div>
 
-        <div id="q-controls">
           {mode === "name" && !difficult && choices.length > 0 && (
-            <Choices
-              choices={choices}
-              answered={answered}
-              choiceResult={choiceResult}
-              eliminatedIds={eliminatedIds}
-              label={(c) => c.name}
-              onPick={handleChoice}
-            />
+            <div id="q-controls">
+              <Choices
+                choices={choices}
+                answered={answered}
+                choiceResult={choiceResult}
+                eliminatedIds={eliminatedIds}
+                label={(c) => c.name}
+                onPick={handleChoice}
+              />
+            </div>
           )}
           {mode === "name" && difficult && item && (
-            <Autocomplete
-              key={item.id + ":name"}
-              candidates={nameCandidates}
-              onSubmit={handleTyped}
-            />
-          )}
-          {canHint && (
-            <button className="hint-btn" onClick={useHint} disabled={hintExhausted}>
-              💡 {hintExhausted ? "No more hints" : hintLabel}
-            </button>
+            <div id="q-controls">
+              <Autocomplete
+                key={item.id + ":name"}
+                candidates={nameCandidates}
+                onSubmit={handleTyped}
+              />
+            </div>
           )}
         </div>
       </div>

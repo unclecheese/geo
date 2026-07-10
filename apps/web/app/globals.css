@@ -522,14 +522,35 @@ svg.spark { width: 100%; height: 70px; display: block; }
 .hl-target { fill: #fbbf24 !important; stroke: #fff !important; stroke-opacity: .9 !important; }
 
 /* ---------- Quiz HUD (map screen) ---------- */
+/* Full-width bar flush to the bottom edge, so the map reads above it. The
+   progress hairline sits flush along the very top; content lives in a centred
+   max-width column (.hud-inner). Height is content-driven — a compact two rows
+   for find, growing downward for the name-mode choices / typed answer. */
 #hud {
-  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
-  z-index: 28; width: min(560px, calc(100% - 60px));
-  background: var(--panel); border: 1px solid var(--stroke);
-  border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px;
+  position: fixed; left: 0; right: 0; bottom: 0;
+  z-index: 28;
+  background: var(--panel); border-top: 1px solid var(--stroke);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: 0 -12px 40px rgba(6, 16, 28, .38);
   transition: opacity .25s, transform .25s;
 }
-#hud.hidden { opacity: 0; transform: translateX(-50%) translateY(20px); pointer-events: none; }
+#hud.hidden { opacity: 0; transform: translateY(100%); pointer-events: none; }
+
+.hud-inner { max-width: 1180px; margin: 0 auto; padding: 14px 32px 20px; }
+
+/* Progress hairline: flush along the top edge, full bar width. */
+#hud > .q-bar {
+  height: 4px; margin: 0; border-radius: var(--radius) var(--radius) 0 0;
+}
+
+/* Row 2: the big prompt on the left, the low-key hint link on the right. */
+.q-head { display: flex; align-items: center; justify-content: space-between; gap: 28px; }
+.q-head #q-body { flex: 1; min-width: 0; }
+.q-head .hint-btn { margin: 0; flex: none; white-space: nowrap; }
+
+/* Interactive controls (choices / typed) sit below, left-aligned under the
+   prompt at a readable width rather than stretched across the whole bar. */
+#hud #q-controls { max-width: 680px; margin-top: 12px; }
 
 @media (max-width: 720px) {
   .choices { grid-template-columns: 1fr; }
