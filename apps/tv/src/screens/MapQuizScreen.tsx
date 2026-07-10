@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -50,6 +50,10 @@ const DPAD_TO_DIR: Record<"up" | "down" | "left" | "right", Dir> = {
   right: "e",
 };
 
+// Two Selects within this window (ms) in country-nav = a double-tap (zoom
+// toggle); a lone Select confirms after it elapses.
+const DOUBLE_MS = 280;
+
 /**
  * The find/name quiz, wired end to end. The map controller is the MapPort the
  * quiz store paints/frames/arrows through; this screen owns the Skia map and
@@ -98,6 +102,13 @@ export function MapQuizScreen() {
   const [stage, setStage] = useState<"region" | "country">("region");
   const [selRegion, setSelRegion] = useState<NavRegionId>(() => defaultRegion());
   const [curId, setCurId] = useState<string | null>(null);
+  // Whether a double-tap has zoomed onto the current country (a closer look);
+  // any dpad move or a second double-tap returns to the static region overview.
+  const [zoomed, setZoomed] = useState(false);
+  // Double-tap Select detection (country stage only): a lone Select confirms
+  // after DOUBLE_MS; a second within the window toggles the zoom instead.
+  const lastSelectAtRef = useRef(0);
+  const singleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Register the port + subscribe to its visual state, and start the session.
   // Cleanup unregisters the port and quits the session so a re-entry starts
@@ -151,9 +162,23 @@ export function MapQuizScreen() {
     setStage("region");
     setSelRegion(start);
     setCurId(null);
+    setZoomed(false);
+    if (singleTimerRef.current) {
+      clearTimeout(singleTimerRef.current);
+      singleTimerRef.current = null;
+    }
+    lastSelectAtRef.current = 0;
     ctl.reset();
     paintRegionPicker(start);
   }, [findItemId, mode, answered, ctl, paintRegionPicker]);
+
+  // Drop any pending single-Select confirm timer on unmount.
+  useEffect(
+    () => () => {
+      if (singleTimerRef.current) clearTimeout(singleTimerRef.current);
+    },
+    []
+  );
 
   const onDpad = useCallback(
     (d: "up" | "down" | "left" | "right") => {
@@ -170,16 +195,18 @@ export function MapQuizScreen() {
         const next = findNav.graph[curId]?.[dir];
         const nextC = next ? findNav.byId.get(next) : undefined;
         if (next && nextC) {
+          // Camera stays at the fixed region frame — only the highlight moves.
+          // If we were double-tap-zoomed, any move returns to that overview.
+          if (zoomed) {
+            setZoomed(false);
+            ctl.frameRegion(findNav.memberCountries[selRegion]);
+          }
           setCurId(next);
           ctl.setHighlights(new Map([[next, "sel"]]));
-          // Zoom+pan the camera onto the newly-highlighted country (with a
-          // margin of context) so small countries are readable — leans in on
-          // small ones, eases back out on large ones.
-          ctl.frameCountryInSafe(nextC);
         }
       }
     },
-    [answered, stage, selRegion, curId, findNav, ctl, paintRegionPicker]
+    [answered, stage, selRegion, curId, zoomed, findNav, ctl, paintRegionPicker]
   );
 
   const onSelect = useCallback(() => {
@@ -197,12 +224,40 @@ export function MapQuizScreen() {
       const start = regionStartCountry(members, findNav.regionCentroid.get(selRegion)!);
       setStage("country");
       setCurId(start.id);
+      setZoomed(false);
       ctl.setHighlights(new Map([[start.id, "sel"]]));
     } else if (curId) {
-      const c = findNav.byId.get(curId);
-      if (c) useQuizStore.getState().handleMapSelect(c);
+      // Country-nav Select is debounced: a lone tap confirms the answer; two
+      // within DOUBLE_MS toggle the closer-look zoom instead.
+      const now = Date.now();
+      if (now - lastSelectAtRef.current < DOUBLE_MS) {
+        lastSelectAtRef.current = 0;
+        if (singleTimerRef.current) {
+          clearTimeout(singleTimerRef.current);
+          singleTimerRef.current = null;
+        }
+        if (zoomed) {
+          setZoomed(false);
+          ctl.frameRegion(findNav.memberCountries[selRegion]);
+        } else {
+          const cur = findNav.byId.get(curId);
+          if (cur) {
+            setZoomed(true);
+            ctl.frameCountryInSafe(cur);
+          }
+        }
+      } else {
+        lastSelectAtRef.current = now;
+        const id = curId;
+        singleTimerRef.current = setTimeout(() => {
+          singleTimerRef.current = null;
+          lastSelectAtRef.current = 0;
+          const c = findNav.byId.get(id);
+          if (c) useQuizStore.getState().handleMapSelect(c);
+        }, DOUBLE_MS);
+      }
     }
-  }, [answered, stage, selRegion, curId, findNav, ctl]);
+  }, [answered, stage, selRegion, curId, zoomed, findNav, ctl]);
 
   // Select is live while the reveal card is up (both find and name mode show it),
   // as well as during an unanswered find question.
@@ -220,6 +275,7 @@ export function MapQuizScreen() {
     if (mode === "find" && !answered && stage === "country") {
       setStage("region");
       setCurId(null);
+      setZoomed(false);
       ctl.reset();
       paintRegionPicker(selRegion);
     } else {
@@ -294,7 +350,7 @@ export function MapQuizScreen() {
                   <QSub>
                     {stage === "region"
                       ? "Pick the region it's in"
-                      : "Navigate to the country, then select"}
+                      : "Navigate, then Select. Double-tap to zoom."}
                   </QSub>
                 </>
               ) : (

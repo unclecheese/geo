@@ -39,11 +39,14 @@ const safeRect = () => ({
   y1: VIEWPORT.h - SAFE.bottom,
 });
 
-// Region framing pads the member-centroid bounding box: a fraction of its span,
-// but at least REGION_MIN_PAD px a side so a tight or single-member cluster gets
-// context rather than a maxK slam on a point. MAXFRAME caps the region zoom.
+// Region framing pads the member-centroid bounding box by a fraction of its
+// span, with a small absolute floor. The floor is deliberately low: the safe
+// band is only ~692px tall, so a large floor (was 220 → +440px) drove fitInto's
+// k below 1 for any tall region (Middle East, Europe, NA) and clamped the
+// overview to world zoom. Every nav region has many members, so the fractional
+// pad already gives breathing room. MAXFRAME caps the region zoom.
 const REGION_PAD_FRAC = 0.2;
-const REGION_MIN_PAD = 220;
+const REGION_MIN_PAD = 40;
 const MAXFRAME = 6;
 
 // Per-country navigation follow (frameCountryInSafe): expand the country's own
