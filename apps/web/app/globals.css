@@ -498,7 +498,10 @@ svg.spark { width: 100%; height: 70px; display: block; }
 
 /* country paths */
 .country { stroke: var(--map-sea); stroke-width: .3px; cursor: pointer; transition: fill .25s ease; }
-.country:hover { stroke: var(--accent); stroke-width: .9px; }
+/* Fill (not just the outline) so the hovered country reads clearly even when
+   zoomed out, where a thin stroke washes out. Non-!important, so the answer
+   feedback colours below (.hl-*) still win while a country is highlighted. */
+.country:hover { fill: var(--accent); stroke: var(--cream); stroke-width: .9px; }
 .country.selectable-hover:hover { filter: drop-shadow(0 0 6px rgba(176,118,43,.85)); }
 
 /* tiny-country outline boxes: a padded frame that's a big, non-overlapping click
