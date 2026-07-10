@@ -1,12 +1,5 @@
 import { useState } from "react";
-import {
-  View,
-  Text,
-  Image,
-  Pressable,
-  StyleSheet,
-  type PressableStateCallbackType,
-} from "react-native";
+import { View, Text, Image, Pressable, StyleSheet } from "react-native";
 import { flagPng, type Country, type RevealState } from "@geobean/core";
 import { theme } from "../theme";
 import { fonts } from "../fonts";
@@ -15,8 +8,13 @@ import { fonts } from "../fonts";
  * Post-grade feedback card — the 10-foot port of web's <Reveal> (see
  * apps/web/components/Reveal.tsx). A parchment panel with the flag, country
  * name and "Capital: X · subregion" on the left, a small-caps verdict top-right,
- * a meta row (Region / Borders / Time), and a full-width brass "Next ▸" button
- * that takes preferred focus so Select advances the instant the card appears.
+ * a meta row (Region / Borders / Time), and a full-width brass "Next ▸" button.
+ * The button is deliberately NON-focusable: the map screen never engages the
+ * tvOS focus engine in find mode (the QuizCard is pointerEvents="none" and input
+ * is driven imperatively), so Select is handled there — `onSelect` calls
+ * `next()` while the reveal is up. Kept focusable it would ALSO fire onPress on
+ * that same Select press and advance twice; non-focusable makes it a pure visual
+ * affordance, permanently styled as the primary action.
  * The panel's top edge is tinted good/bad to echo web's coloured box-shadow.
  * (Quitting mid-round is the remote's Menu button — see useMenuButtonBack — so
  * there's no separate End button here, matching web.)
@@ -54,14 +52,7 @@ export function RevealCard({ reveal, onNext }: { reveal: RevealState; onNext: ()
           ))}
         </View>
 
-        <Pressable
-          onPress={onNext}
-          hasTVPreferredFocus
-          style={(state: PressableStateCallbackType) => [
-            styles.next,
-            state.focused && styles.nextFocused,
-          ]}
-        >
+        <Pressable onPress={onNext} focusable={false} style={styles.next}>
           <Text style={styles.nextText}>Next ▸</Text>
         </Pressable>
       </View>
@@ -151,14 +142,16 @@ const styles = StyleSheet.create({
   },
   meta: { color: theme.inkFaint, fontSize: 22, fontFamily: fonts.body },
   next: {
+    // Non-focusable, so it carries the "primary action" look permanently
+    // (what used to be the focused state): ink border + slight scale-up.
     marginTop: 30,
     backgroundColor: theme.brass,
     borderRadius: 12,
     borderWidth: 3,
-    borderColor: "transparent",
+    borderColor: theme.ink,
     paddingVertical: 20,
     alignItems: "center",
+    transform: [{ scale: 1.03 }],
   },
-  nextFocused: { borderColor: theme.ink, transform: [{ scale: 1.03 }] },
   nextText: { color: theme.cream, fontSize: 32, fontFamily: fonts.displaySemi },
 });

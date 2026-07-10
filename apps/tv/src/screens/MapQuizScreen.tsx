@@ -157,6 +157,8 @@ export function MapQuizScreen() {
 
   const onDpad = useCallback(
     (d: "up" | "down" | "left" | "right") => {
+      // Reveal card up: ignore dpad (don't walk the hidden highlight).
+      if (answered) return;
       const dir = DPAD_TO_DIR[d];
       if (stage === "region") {
         const next = findNav.regionDpad[selRegion]?.[dir];
@@ -176,10 +178,17 @@ export function MapQuizScreen() {
         }
       }
     },
-    [stage, selRegion, curId, findNav, ctl, paintRegionPicker]
+    [answered, stage, selRegion, curId, findNav, ctl, paintRegionPicker]
   );
 
   const onSelect = useCallback(() => {
+    // Reveal card up (find OR name): Select advances to the next question.
+    // The Next button is non-focusable, so this is the only path — no
+    // double-advance. Matches the imperative input model the rest of find uses.
+    if (answered) {
+      useQuizStore.getState().next();
+      return;
+    }
     if (stage === "region") {
       const members = findNav.memberCountries[selRegion];
       if (!members.length) return;
@@ -192,10 +201,12 @@ export function MapQuizScreen() {
       const c = findNav.byId.get(curId);
       if (c) useQuizStore.getState().handleMapSelect(c);
     }
-  }, [stage, selRegion, curId, findNav, ctl]);
+  }, [answered, stage, selRegion, curId, findNav, ctl]);
 
+  // Select is live while the reveal card is up (both find and name mode show it),
+  // as well as during an unanswered find question.
   useRemoteInput({
-    enabled: findActive,
+    enabled: findActive || answered,
     onDpad,
     onSelect,
     onPlayPause: () => useQuizStore.getState().useHint(),
