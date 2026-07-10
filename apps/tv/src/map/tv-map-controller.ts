@@ -41,6 +41,13 @@ const safeRect = () => ({
 // so its body, not just its centroid, stays clear of the edges.
 const COMFORT_MARGIN = 120;
 
+// Region framing pads the member-centroid bounding box: a fraction of its span,
+// but at least REGION_MIN_PAD px a side so a tight or single-member cluster gets
+// context rather than a maxK slam on a point. MAXFRAME caps the region zoom.
+const REGION_PAD_FRAC = 0.2;
+const REGION_MIN_PAD = 220;
+const MAXFRAME = 6;
+
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 
 /** Like core's fitBounds but centres the box inside an arbitrary sub-rect of the
@@ -189,47 +196,48 @@ export function createTvMapController(): TvMapController {
       notify();
     },
     frameRegion(members: Country[]) {
-      // Per-member: a projected box and a representative centroid screen-x.
-      // A member whose geoBounds crosses the antimeridian (west λ > east λ) is
-      // torn by the 0°-centred projection into a full-width box, so contribute
-      // its largest-polygon centroid as a zero-size point instead — that keeps
-      // Russia (eastAsia) and Alaska/USA (northAmerica) in the mainland mass.
-      const memberBoxes: [[number, number], [number, number]][] = [];
-      const centroidXs: number[] = [];
+      // Frame to the bounding box of member CENTROIDS, not their geoBounds boxes.
+      // Many countries sprawl far past their populated mass (France→French
+      // Guiana, Norway→Svalbard, Canada→Arctic islands), which would blow the
+      // union box up to a third of the globe and leave the frame at world view.
+      // A largest-polygon centroid is one point on the main mass, so the frame
+      // stays tight; padding + pan-follow give each country's body room. (A
+      // centroid can't tear at the antimeridian, so no torn-member special case
+      // is needed — but dominantCluster still drops Oceania's trans-dateline
+      // minority.)
+      const pts: [number, number][] = [];
+      const xs: number[] = [];
       for (const c of members) {
         if (!c.feature) continue;
-        const gb = geoBounds(c.feature as never) as [[number, number], [number, number]];
-        const cp = PROJ(largestPolygonCentroid(c.feature));
-        if (!cp || !isFinite(cp[0]) || !isFinite(cp[1])) continue;
-        const torn = gb[0][0] > gb[1][0];
-        const box = torn ? ([[cp[0], cp[1]], [cp[0], cp[1]]] as [[number, number], [number, number]]) : projectBox(gb);
-        if (!box) continue;
-        memberBoxes.push(box);
-        centroidXs.push(cp[0]);
+        const p = PROJ(largestPolygonCentroid(c.feature));
+        if (!p || !isFinite(p[0]) || !isFinite(p[1])) continue;
+        pts.push([p[0], p[1]]);
+        xs.push(p[0]);
       }
-      if (!memberBoxes.length) return;
+      if (!pts.length) return;
 
       // Drop a trans-dateline minority (Oceania: Polynesia at the far left vs.
       // the Australasian mass at the right) so we frame the dominant cluster;
       // pan-follow reaches the stragglers. Compact regions keep every member.
-      const keep = dominantCluster(centroidXs, 0.3 * VIEWPORT.w);
+      const keep = dominantCluster(xs, 0.3 * VIEWPORT.w);
 
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (let i = 0; i < memberBoxes.length; i++) {
+      for (let i = 0; i < pts.length; i++) {
         if (!keep[i]) continue;
-        x0 = Math.min(x0, memberBoxes[i][0][0]);
-        y0 = Math.min(y0, memberBoxes[i][0][1]);
-        x1 = Math.max(x1, memberBoxes[i][1][0]);
-        y1 = Math.max(y1, memberBoxes[i][1][1]);
+        x0 = Math.min(x0, pts[i][0]);
+        y0 = Math.min(y0, pts[i][1]);
+        x1 = Math.max(x1, pts[i][0]);
+        y1 = Math.max(y1, pts[i][1]);
       }
       if (!isFinite(x0) || !isFinite(y0) || !isFinite(x1) || !isFinite(y1)) return;
-      // A little breathing room around the region, then fit into the HUD-safe
-      // band (not the full viewport) — cap the zoom so a compact region still
-      // shows with surrounding context. A region too big to fit even at k=1
-      // overflows the band; pan-follow (ensureVisible) covers navigating it.
-      const padX = (x1 - x0) * 0.08;
-      const padY = (y1 - y0) * 0.08;
-      transform = fitInto([[x0 - padX, y0 - padY], [x1 + padX, y1 + padY]], safeRect(), 1, 6);
+
+      // Pad each side so a country whose centroid sits at the box edge still
+      // shows its body: a fraction of the span, but at least REGION_MIN_PAD px
+      // a side so a tight cluster or single-member region gets context instead
+      // of slamming to maxK on a point. Then fit into the HUD-safe band.
+      const padX = Math.max((x1 - x0) * REGION_PAD_FRAC, REGION_MIN_PAD);
+      const padY = Math.max((y1 - y0) * REGION_PAD_FRAC, REGION_MIN_PAD);
+      transform = fitInto([[x0 - padX, y0 - padY], [x1 + padX, y1 + padY]], safeRect(), 1, MAXFRAME);
       notify();
     },
     ensureVisible(c: Country) {
