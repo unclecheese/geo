@@ -172,9 +172,10 @@ export function MapQuizScreen() {
         if (next && nextC) {
           setCurId(next);
           ctl.setHighlights(new Map([[next, "sel"]]));
-          // Pan the camera to follow the highlight toward the region's edges
-          // (e.g. Niger→Algeria pans up) so it never hides behind the HUD.
-          ctl.ensureVisible(nextC);
+          // Zoom+pan the camera onto the newly-highlighted country (with a
+          // margin of context) so small countries are readable — leans in on
+          // small ones, eases back out on large ones.
+          ctl.frameCountryInSafe(nextC);
         }
       }
     },

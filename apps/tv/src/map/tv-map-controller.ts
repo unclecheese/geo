@@ -38,17 +38,24 @@ const safeRect = () => ({
   y1: VIEWPORT.h - SAFE.bottom,
 });
 
-// A country's projected centroid must sit at least this far inside the safe rect
-// before pan-follow leaves it alone — the slack absorbs the country's own extent
-// so its body, not just its centroid, stays clear of the edges.
-const COMFORT_MARGIN = 120;
-
 // Region framing pads the member-centroid bounding box: a fraction of its span,
 // but at least REGION_MIN_PAD px a side so a tight or single-member cluster gets
 // context rather than a maxK slam on a point. MAXFRAME caps the region zoom.
 const REGION_PAD_FRAC = 0.2;
 const REGION_MIN_PAD = 220;
 const MAXFRAME = 6;
+
+// Per-country navigation follow (frameCountryInSafe): expand the country's own
+// bounds so a margin of context / ~1–2 neighbours show (same pad semantics as
+// frameCountry's 0.4 — higher = more context, and less scale change per move),
+// then fit into the safe band clamped to [MINK, MAXK]. MINK keeps a large
+// country still reading as "zoomed in"; MAXK stops a tiny country/island zooming
+// absurdly far. TORN_DEG is the half-size (degrees) of the fallback box used for
+// an antimeridian-crossing country, whose geoBounds would otherwise be torn.
+const COUNTRY_CONTEXT_PAD = 1.4;
+const COUNTRY_MINK = 1.6;
+const COUNTRY_MAXK = 9;
+const TORN_DEG = 14;
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 
@@ -76,19 +83,6 @@ function fitInto(
   return { k, tx: rcx - cx * k, ty: rcy - cy * k };
 }
 
-/** Keep at least `margin` px of the projected sphere on screen at any pan
- *  offset, so pan-follow can never scroll the whole map away. */
-function clampPan(t: MapTransform): MapTransform {
-  const margin = 200;
-  const minTx = VIEWPORT.w - VIEWPORT.w * t.k - margin;
-  const minTy = VIEWPORT.h - VIEWPORT.h * t.k - margin;
-  return {
-    k: t.k,
-    tx: Math.max(minTx, Math.min(margin, t.tx)),
-    ty: Math.max(minTy, Math.min(margin, t.ty)),
-  };
-}
-
 export interface TvMapState {
   transform: MapTransform;
   paints: Map<string, PaintKind>;
@@ -102,14 +96,14 @@ export interface TvMapController extends MapPort {
   /** Replace the whole paint map in one notify — used by dpad find navigation,
    *  which repaints region groups / the current country on every move. */
   setHighlights(paints: Map<string, PaintKind>): void;
-  /** Zoom to fit every country of a nav-region (dpad find, region → country)
-   *  into the HUD-safe band. */
+  /** Zoom to fit every country of a nav-region into the HUD-safe band — the
+   *  orientation overview shown on region-select (dpad find, region → country). */
   frameRegion(members: Country[]): void;
-  /** Edge-triggered pan-follow: if `c`'s projected centroid is near/outside the
-   *  safe rect, pan (k unchanged) just enough to bring it comfortably inside;
-   *  otherwise do nothing. Keeps navigation toward a region's edge from walking
-   *  the highlight under the scorebar/card. */
-  ensureVisible(c: Country): void;
+  /** Zoom+pan the camera onto one country (with a margin of context so ~1–2
+   *  neighbours show), fit into the HUD-safe band. This is the per-country
+   *  navigation follow: it leans in on small countries so they're readable and
+   *  eases back out on large ones. */
+  frameCountryInSafe(c: Country): void;
 }
 
 /** MapPort implementation for tvOS: drives the same transform/paint/box/arrow
@@ -203,7 +197,7 @@ export function createTvMapController(): TvMapController {
       // Guiana, Norway→Svalbard, Canada→Arctic islands), which would blow the
       // union box up to a third of the globe and leave the frame at world view.
       // A largest-polygon centroid is one point on the main mass, so the frame
-      // stays tight; padding + pan-follow give each country's body room. (A
+      // stays tight; padding + the per-country zoom-follow give each body room. (A
       // centroid can't tear at the antimeridian, so no torn-member special case
       // is needed — but dominantCluster still drops Oceania's trans-dateline
       // minority.)
@@ -220,7 +214,8 @@ export function createTvMapController(): TvMapController {
 
       // Drop a trans-dateline minority (Oceania: Polynesia at the far left vs.
       // the Australasian mass at the right) so we frame the dominant cluster;
-      // pan-follow reaches the stragglers. Compact regions keep every member.
+      // the per-country zoom-follow reaches the stragglers. Compact regions keep
+      // every member.
       const keep = dominantCluster(xs, 0.3 * VIEWPORT.w);
 
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -242,24 +237,21 @@ export function createTvMapController(): TvMapController {
       transform = fitInto([[x0 - padX, y0 - padY], [x1 + padX, y1 + padY]], safeRect(), 1, MAXFRAME);
       notify();
     },
-    ensureVisible(c: Country) {
+    frameCountryInSafe(c: Country) {
       if (!c.feature) return;
-      const centroid = largestPolygonCentroid(c.feature);
-      const w = PROJ(centroid);
-      if (!w || !isFinite(w[0]) || !isFinite(w[1])) return;
-      const sx = w[0] * transform.k + transform.tx;
-      const sy = w[1] * transform.k + transform.ty;
-      const r = safeRect();
-      const m = COMFORT_MARGIN;
-      let dx = 0;
-      let dy = 0;
-      if (sx < r.x0 + m) dx = r.x0 + m - sx;
-      else if (sx > r.x1 - m) dx = r.x1 - m - sx;
-      if (sy < r.y0 + m) dy = r.y0 + m - sy;
-      else if (sy > r.y1 - m) dy = r.y1 - m - sy;
-      // Edge-triggered: already comfortably inside → don't move (no jitter).
-      if (dx === 0 && dy === 0) return;
-      transform = clampPan({ k: transform.k, tx: transform.tx + dx, ty: transform.ty + dy });
+      const gb = geoBounds(c.feature as never) as [[number, number], [number, number]];
+      let px: [[number, number], [number, number]] | null;
+      if (gb[0][0] > gb[1][0]) {
+        // Antimeridian-crossing (Russia, USA/Alaska): geoBounds is torn into a
+        // full-width box. Frame a fixed degree box around the largest-polygon
+        // centroid instead so the zoom stays sane.
+        const [lng, lat] = largestPolygonCentroid(c.feature);
+        px = projectBox([[lng - TORN_DEG, lat - TORN_DEG], [lng + TORN_DEG, lat + TORN_DEG]]);
+      } else {
+        px = projectBox(Logic.expandBounds(gb, COUNTRY_CONTEXT_PAD));
+      }
+      if (!px) return;
+      transform = fitInto(px, safeRect(), COUNTRY_MINK, COUNTRY_MAXK);
       notify();
     },
     markArrow(c: Country) {
