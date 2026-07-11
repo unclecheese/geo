@@ -132,7 +132,9 @@ recurring gotchas:
 ## Git & deploy
 
 - This repo is a playground: **commit and push directly to `main`, no PRs**.
-- **A push to GitHub does NOT auto-deploy.** Deploy explicitly with
-  `vercel deploy --prod --yes` (the project is CLI-linked, `.vercel/` is
-  gitignored). Production alias: `geo-pi-two.vercel.app`.
-- Only commit/push/deploy when asked.
+- **Vercel's GitHub integration auto-deploys `main` to production on push** — so
+  a push is the deploy. Do NOT also run `vercel deploy --prod`; it just creates a
+  redundant duplicate production deployment. Production alias:
+  `geo-pi-two.vercel.app`. (CLI deploy is only a manual fallback if the git
+  integration is ever down.)
+- Only commit/push when asked.
