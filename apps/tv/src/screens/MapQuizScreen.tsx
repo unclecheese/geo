@@ -6,25 +6,17 @@ import {
   DataLayer,
   Logic,
   MODES,
-  NAV_REGIONS,
-  buildFindGraph,
+  pickCountryAt,
   setMapPort,
   useAtlasStore,
   useQuizStore,
-  type Country,
-  type Dir,
-  type NavRegionId,
 } from "@geobean/core";
 import type { RootStackParamList } from "../navigation";
 import { createTvMapController, type TvMapState } from "../map/tv-map-controller";
-import { TvMap, type PaintKind } from "../map/TvMap";
+import { TvMap, PROJ } from "../map/TvMap";
+import { CursorOverlay, type CursorOverlayHandle } from "../map/CursorOverlay";
 import { useRemoteInput } from "../input/useRemoteInput";
 import { useMenuButtonBack } from "../input/useMenuButtonBack";
-import {
-  buildRegionDpad,
-  defaultRegion,
-  regionStartCountry,
-} from "../input/region-dpad";
 import { Scorebar } from "../components/Scorebar";
 import {
   QuizCard,
@@ -42,33 +34,33 @@ import { theme } from "../theme";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-// Siri-Remote dpad direction → compass direction the graphs are keyed by.
-const DPAD_TO_DIR: Record<"up" | "down" | "left" | "right", Dir> = {
-  up: "n",
-  down: "s",
-  left: "w",
-  right: "e",
-};
+// Cursor starts dead-centre; it persists across questions (the map resets, the
+// crosshair stays put) so the player never loses it between finds.
+const CURSOR_START = { x: 960, y: 540 };
 
-// Two Selects within this window (ms) in country-nav = a double-tap (zoom
-// toggle); a lone Select confirms after it elapses.
-const DOUBLE_MS = 280;
+// Min gap between hover hit-tests. Unlike the web map's free CSS :hover, TV must
+// run pickCountryAt (geoContains over every country) itself, which is too heavy
+// to do on every rapid pan sample — so throttle it. The crosshair still moves
+// every sample (cheap); only the brass fill re-resolves at this cadence.
+const HOVER_MS = 45;
 
 /**
  * The find/name quiz, wired end to end. The map controller is the MapPort the
- * quiz store paints/frames/arrows through; this screen owns the Skia map and
- * the remote-input plumbing.
+ * quiz store paints/frames/arrows through; this screen owns the Skia map, the
+ * floating crosshair, and the remote-input plumbing. Zero quiz logic lives
+ * here: a valid pick just calls `handleMapSelect`, and the store decides
+ * correct/wrong, painting good/bad + the target arrow.
  *
- * FIND is a two-stage dpad flow (no cursor):
- *   1. REGION PICKER — globe view, every askable country dim-tinted by region,
- *      one region emphasised. dpad moves the emphasis between regions (nearest
- *      in that compass direction); Select zooms into the region and enters…
- *   2. COUNTRY NAV — zoomed into the region, exactly one (unlabelled) country
- *      is highlighted. dpad walks the within-region find-graph n/e/s/w; Select
- *      confirms it as the answer via `handleMapSelect` (the store grades and
- *      paints good/bad + the target). Menu backs out to the region picker.
+ * FIND is a free floating cursor (like the web map):
+ *   • touch surface pans the cursor coarsely, the dpad nudges it finely;
+ *   • single Select picks the country under the cursor (via pickCountryAt,
+ *     which honours the tiny-country hit boxes, so microstates are reachable);
+ *   • double-tap Select zooms in centred on the cursor (double-tap again zooms
+ *     back out) — the map starts every question at world view, never auto-framed;
+ *   • the country under the cursor is painted brass (hover), like the web map.
  * NAME mode is unchanged: the native focus engine drives the choices grid /
- * typed input in the QuizCard, so dpad/select are gated off there.
+ * typed input, so the cursor/dpad are gated off there; a plain Select advances
+ * the reveal card in both modes.
  */
 export function MapQuizScreen() {
   const nav = useNavigation<Nav>();
@@ -81,38 +73,21 @@ export function MapQuizScreen() {
     arrow: null,
   }));
 
-  // Find navigation is built once per session (like the map paths): the
-  // within-region directional graph, region→region dpad adjacency, id→country
-  // lookup, per-region member lists, and the dim "these are the regions" base
-  // paint the picker starts from.
-  const findNav = useMemo(() => {
-    const { graph, regions } = buildFindGraph(DataLayer.countries);
-    const byId = new Map(DataLayer.countries.map((c) => [c.id, c] as const));
-    const regionCentroid = new Map(NAV_REGIONS.map((r) => [r.id, r.centroid] as const));
-    const memberCountries = {} as Record<NavRegionId, Country[]>;
-    const dimBase = new Map<string, PaintKind>();
-    for (const r of NAV_REGIONS) {
-      const ids = regions[r.id] ?? [];
-      memberCountries[r.id] = ids.map((id) => byId.get(id)).filter((c): c is Country => !!c);
-      for (const id of ids) dimBase.set(id, "region");
-    }
-    return { graph, byId, regionDpad: buildRegionDpad(), regionCentroid, memberCountries, dimBase };
-  }, []);
-
-  const [stage, setStage] = useState<"region" | "country">("region");
-  const [selRegion, setSelRegion] = useState<NavRegionId>(() => defaultRegion());
-  const [curId, setCurId] = useState<string | null>(null);
-  // Whether a double-tap has zoomed onto the current country (a closer look);
-  // any dpad move or a second double-tap returns to the static region overview.
-  const [zoomed, setZoomed] = useState(false);
-  // Double-tap Select detection (country stage only): a lone Select confirms
-  // after DOUBLE_MS; a second within the window toggles the zoom instead.
-  const lastSelectAtRef = useRef(0);
-  const singleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The cursor is deliberately NOT React state: setting state on every pan
+  // sample re-rendered the whole ~470-node map path tree (a delay-then-jump).
+  // Instead the live position lives in a ref (read at click time) and the
+  // crosshair is pushed imperatively into CursorOverlay, so a move repaints only
+  // that 3-node overlay Canvas — never the map Canvas or this screen.
+  const cursorRef = useRef({ ...CURSOR_START });
+  const overlayRef = useRef<CursorOverlayHandle>(null);
+  // Last country the cursor resolved to. Hover repaints the map (a fresh paint
+  // Map), so we only do it when the hovered country actually CHANGES, not on
+  // every sample — keeps the hover cheap despite the coarse pan firing rapidly.
+  const hoveredRef = useRef<string | null>(null);
 
   // Register the port + subscribe to its visual state, and start the session.
   // Cleanup unregisters the port and quits the session so a re-entry starts
-  // clean (no stale paints, no double timer).
+  // clean (no stale paints).
   useEffect(() => {
     setMapPort(ctl);
     const unbind = ctl.bind(setMapState);
@@ -138,153 +113,100 @@ export function MapQuizScreen() {
   const session = useQuizStore((s) => s.session);
   const difficult = useAtlasStore((s) => s.settings.quizDifficulty === "difficult");
 
-  const findActive = mode === "find" && !answered;
+  const cursorMode = mode === "find" && !answered;
   const item = current?.item;
-  // Re-init the region picker whenever a NEW find question begins.
+  // Re-arm hover whenever a NEW find question begins (the store resets the map).
   const findItemId = mode === "find" ? current?.item.id ?? null : null;
 
-  // Paint the region picker: every askable country dim, the selected region's
-  // members emphasised. One setHighlights → one repaint.
-  const paintRegionPicker = useCallback(
-    (region: NavRegionId) => {
-      const m = new Map(findNav.dimBase);
-      for (const c of findNav.memberCountries[region]) m.set(c.id, "sel");
-      ctl.setHighlights(m);
-    },
-    [ctl, findNav]
-  );
+  // Boxes are static (laid out once by the controller) but arrive with the first
+  // bind notification — keep the latest in a ref so the cursor handlers, which
+  // close over the controller for their whole lifetime, always see them.
+  const boxesRef = useRef(mapState.boxes);
+  boxesRef.current = mapState.boxes;
 
-  // A fresh find question → globe view, region picker on the default region.
-  // (The store's next() already reset the map; we just paint the groups.)
-  useEffect(() => {
-    if (mode !== "find" || answered || !findItemId) return;
-    const start = defaultRegion();
-    setStage("region");
-    setSelRegion(start);
-    setCurId(null);
-    setZoomed(false);
-    if (singleTimerRef.current) {
-      clearTimeout(singleTimerRef.current);
-      singleTimerRef.current = null;
-    }
-    lastSelectAtRef.current = 0;
-    ctl.reset();
-    paintRegionPicker(start);
-  }, [findItemId, mode, answered, ctl, paintRegionPicker]);
-
-  // Drop any pending single-Select confirm timer on unmount.
-  useEffect(
-    () => () => {
-      if (singleTimerRef.current) clearTimeout(singleTimerRef.current);
-    },
-    []
-  );
-
-  const onDpad = useCallback(
-    (d: "up" | "down" | "left" | "right") => {
-      // Reveal card up: ignore dpad (don't walk the hidden highlight).
-      if (answered) return;
-      const dir = DPAD_TO_DIR[d];
-      if (stage === "region") {
-        const next = findNav.regionDpad[selRegion]?.[dir];
-        if (next && next !== selRegion) {
-          setSelRegion(next);
-          paintRegionPicker(next);
-        }
-      } else if (curId) {
-        const next = findNav.graph[curId]?.[dir];
-        const nextC = next ? findNav.byId.get(next) : undefined;
-        if (next && nextC) {
-          // Camera stays at the fixed region frame — only the highlight moves.
-          // If we were double-tap-zoomed, any move returns to that overview.
-          if (zoomed) {
-            setZoomed(false);
-            ctl.frameRegion(findNav.memberCountries[selRegion]);
-          }
-          setCurId(next);
-          ctl.setHighlights(new Map([[next, "sel"]]));
-        }
+  // Resolve what's under a point and paint that country brass — but only repaint
+  // when the hovered country actually changes (a fresh paint Map re-renders the
+  // whole map, so we never do it just because the cursor jiggled within one).
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastHoverAt = useRef(0);
+  const resolveHover = useCallback(
+    (pt: { x: number; y: number }) => {
+      lastHoverAt.current = Date.now();
+      const hit = pickCountryAt(ctl.screenToProjected(pt), DataLayer.countries, boxesRef.current, PROJ);
+      const id = hit?.id ?? null;
+      if (id !== hoveredRef.current) {
+        hoveredRef.current = id;
+        ctl.setHighlights(id ? new Map([[id, "hover"]]) : new Map());
       }
     },
-    [answered, stage, selRegion, curId, zoomed, findNav, ctl, paintRegionPicker]
+    [ctl]
   );
 
-  const onSelect = useCallback(() => {
-    // Reveal card up (find OR name): Select advances to the next question.
-    // The Next button is non-focusable, so this is the only path — no
-    // double-advance. Matches the imperative input model the rest of find uses.
-    if (answered) {
-      useQuizStore.getState().next();
-      return;
-    }
-    if (stage === "region") {
-      const members = findNav.memberCountries[selRegion];
-      if (!members.length) return;
-      ctl.frameRegion(members);
-      const start = regionStartCountry(members, findNav.regionCentroid.get(selRegion)!);
-      setStage("country");
-      setCurId(start.id);
-      setZoomed(false);
-      ctl.setHighlights(new Map([[start.id, "sel"]]));
-    } else if (curId) {
-      // Country-nav Select is debounced: a lone tap confirms the answer; two
-      // within DOUBLE_MS toggle the closer-look zoom instead.
-      const now = Date.now();
-      if (now - lastSelectAtRef.current < DOUBLE_MS) {
-        lastSelectAtRef.current = 0;
-        if (singleTimerRef.current) {
-          clearTimeout(singleTimerRef.current);
-          singleTimerRef.current = null;
-        }
-        if (zoomed) {
-          setZoomed(false);
-          ctl.frameRegion(findNav.memberCountries[selRegion]);
-        } else {
-          const cur = findNav.byId.get(curId);
-          if (cur) {
-            setZoomed(true);
-            ctl.frameCountryInSafe(cur);
-          }
-        }
+  // Move the cursor: push the crosshair every sample (cheap), but throttle the
+  // heavy hover hit-test — with a trailing pass so the fill still lands on the
+  // resting country when a fast pan ends mid-throttle.
+  const moveCursorTo = useCallback(
+    (pt: { x: number; y: number }) => {
+      cursorRef.current = pt;
+      overlayRef.current?.set(pt);
+      if (hoverTimer.current) {
+        clearTimeout(hoverTimer.current);
+        hoverTimer.current = null;
+      }
+      const wait = HOVER_MS - (Date.now() - lastHoverAt.current);
+      if (wait <= 0) {
+        resolveHover(pt);
       } else {
-        lastSelectAtRef.current = now;
-        const id = curId;
-        singleTimerRef.current = setTimeout(() => {
-          singleTimerRef.current = null;
-          lastSelectAtRef.current = 0;
-          const c = findNav.byId.get(id);
-          if (c) useQuizStore.getState().handleMapSelect(c);
-        }, DOUBLE_MS);
+        hoverTimer.current = setTimeout(() => {
+          hoverTimer.current = null;
+          resolveHover({ ...cursorRef.current });
+        }, wait);
       }
-    }
-  }, [answered, stage, selRegion, curId, zoomed, findNav, ctl]);
+    },
+    [resolveHover]
+  );
 
-  // Select is live while the reveal card is up (both find and name mode show it),
-  // as well as during an unanswered find question.
+  // Show/hide the crosshair with cursor mode, and re-arm the hover each new find
+  // question (findItemId) — after the store has reset the map — so the country
+  // under the resting cursor lights up immediately.
+  useEffect(() => {
+    if (cursorMode) {
+      hoveredRef.current = null;
+      moveCursorTo({ ...cursorRef.current });
+    } else {
+      if (hoverTimer.current) {
+        clearTimeout(hoverTimer.current);
+        hoverTimer.current = null;
+      }
+      overlayRef.current?.set(null);
+      hoveredRef.current = null;
+    }
+  }, [cursorMode, findItemId, moveCursorTo]);
+
+  // Drop any pending hover timer on unmount.
+  useEffect(() => () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+  }, []);
+
   useRemoteInput({
-    enabled: findActive || answered,
-    onDpad,
-    onSelect,
+    cursorEnabled: cursorMode,
+    advanceEnabled: answered,
+    onCursor: moveCursorTo,
+    onSingleClick: (c) => {
+      const hit = pickCountryAt(ctl.screenToProjected(c), DataLayer.countries, boxesRef.current, PROJ);
+      if (hit) useQuizStore.getState().handleMapSelect(hit);
+      // Miss (open ocean → null) is a deliberate no-op.
+    },
+    onDoubleClick: (c) => ctl.zoomToggle(c),
+    onAdvance: () => useQuizStore.getState().next(),
     onPlayPause: () => useQuizStore.getState().useHint(),
   });
 
-  // Menu/Back: in country-nav it backs out to the region picker; otherwise it
-  // pops to the Menu screen (unmount runs the quit() cleanup above). The handler
-  // re-registers each render, so it always sees the current stage.
-  useMenuButtonBack(() => {
-    if (mode === "find" && !answered && stage === "country") {
-      setStage("region");
-      setCurId(null);
-      setZoomed(false);
-      ctl.reset();
-      paintRegionPicker(selRegion);
-    } else {
-      nav.goBack();
-    }
-  });
+  // Menu/Back pops to the Menu screen (unmount runs the quit() cleanup above).
+  useMenuButtonBack(() => nav.goBack());
 
-  // Derived HUD-card content. Find shows a prompt + stage sub + escalating hint
-  // list; name shows the prompt + choices/typed + a hint button.
+  // Derived HUD-card content. Find shows a prompt + sub + escalating hint list;
+  // name shows the prompt + choices/typed + a hint button.
   const findHints: string[] = [];
   if (mode === "find" && item) {
     if (hintLevel >= 1) findHints.push(`Region: ${item.region}`);
@@ -327,15 +249,16 @@ export function MapQuizScreen() {
         paints={mapState.paints}
         boxes={mapState.boxes}
       />
+      <CursorOverlay ref={overlayRef} />
 
       <Scorebar />
 
       {/* The single web-style question card, anchored bottom-centre. In find
-          mode it's pointer-transparent so it never grabs focus off the dpad
-          navigation; in name mode it's interactive so the focus engine can
-          drive the choices grid / typed input. */}
+          (cursor) mode it's pointer-transparent so it never steals the cursor
+          or blocks a pick behind it; in name mode it's interactive so the focus
+          engine can drive the choices grid / typed input. */}
       {item && !answered && (
-        <View style={styles.hudWrap} pointerEvents={findActive ? "none" : "box-none"}>
+        <View style={styles.hudWrap} pointerEvents={cursorMode ? "none" : "box-none"}>
           <QuizCard
             variant="bar"
             kicker={kicker}
@@ -347,11 +270,7 @@ export function MapQuizScreen() {
                   <QPrompt>
                     Find <Em>{item.name}</Em> on the map
                   </QPrompt>
-                  <QSub>
-                    {stage === "region"
-                      ? "Pick the region it's in"
-                      : "Navigate, then Select. Double-tap to zoom."}
-                  </QSub>
+                  <QSub>Move the cursor and Select. Double-tap to zoom.</QSub>
                 </>
               ) : (
                 <>

@@ -15,14 +15,14 @@ export const PROJ = geoEqualEarth().fitExtent(
   { type: "Sphere" }
 );
 
-export type PaintKind = "good" | "bad" | "target" | "sel" | "region";
+export type PaintKind = "good" | "bad" | "target" | "sel" | "hover";
 
 const PAINT_COLOR: Record<PaintKind, string> = {
   good: theme.good,
   bad: theme.bad,
   target: theme.target,
   sel: theme.brass,
-  region: theme.forest, // dim group tint for the find region picker
+  hover: theme.brass, // cursor-over fill, matching the web map's brass hover
 };
 
 export interface TvMapProps {
