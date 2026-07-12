@@ -436,6 +436,18 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       mapPort()?.refreshColors();
     }
 
+    // Timed mode is a race, so there's no reveal card to dismiss: the score,
+    // streak, verdict and toast/sound above are the whole acknowledgement, and
+    // we jump straight to the next question. next() advances `asked` exactly as
+    // the reveal card's Next would, so the count stays right; on the last
+    // question it falls through to finish(). grade() is always the final call in
+    // every answer handler, so advancing from here is safe.
+    if (session.timed) {
+      set({ session });
+      get().next();
+      return;
+    }
+
     set({
       answered: true,
       session,

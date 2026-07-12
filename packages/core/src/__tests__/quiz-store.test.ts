@@ -104,6 +104,37 @@ describe("quiz-store: typed grading (difficult)", () => {
   });
 });
 
+describe("quiz-store: timed mode auto-advances (no reveal card)", () => {
+  it("skips the reveal and jumps straight to the next question", () => {
+    const prev = DataLayer.countries;
+    // Two askable countries so next() can pick a fresh one (Italy is already in
+    // askedIds); both have capitals for capital mode.
+    DataLayer.countries = [ITALY, SPAIN];
+    useAtlasStore.getState().setSettings({ modes: ["capital"] as ModeId[], regions: [] });
+    try {
+      seed("capital", { choices: CHOICES, session: { ...baseSession(), timed: true } });
+      useQuizStore.getState().handleChoice(ITALY); // correct answer
+      const s = useQuizStore.getState();
+      expect(s.reveal).toBeNull(); // no reveal card to dismiss
+      expect(s.answered).toBe(false); // not parked on a confirmation
+      expect(s.finished).toBe(false); // advanced, not ended
+      expect(s.current?.item.id).toBe("724"); // moved on to Spain
+      expect(s.session?.asked).toBe(2); // next() incremented asked once
+      expect(s.session?.correct).toBe(1); // the correct answer still counted
+    } finally {
+      DataLayer.countries = prev;
+    }
+  });
+
+  it("still shows the reveal card when untimed (control)", () => {
+    seed("capital", { choices: CHOICES, session: { ...baseSession(), timed: false } });
+    useQuizStore.getState().handleChoice(ITALY);
+    const s = useQuizStore.getState();
+    expect(s.answered).toBe(true);
+    expect(s.reveal?.correct).toBe(true);
+  });
+});
+
 describe("quiz-store: hints", () => {
   it("find mode escalates the location hint level, capped at 3", () => {
     seed("find");
