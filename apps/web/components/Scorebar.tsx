@@ -17,20 +17,18 @@ export function Scorebar() {
   return (
     <div id="scorebar" className={cls.trim()}>
       <div className="stat-pill">
-        <div className="v">{session?.score ?? 0}</div>
-        <div className="l">Score</div>
+        <span className="v">{session?.score ?? 0}</span>
+        <span className="l">Score</span>
       </div>
-      <div className="stat-pill">
-        <div className="v">{acc}</div>
-        <div className="l">Accuracy</div>
+      <div className="stat-pill acc">
+        <span className="v">{acc}</span>
+        <span className="l">Acc</span>
       </div>
       <div className="stat-pill streak">
-        <div className="v">{session?.streak ?? 0}</div>
-        <div className="l">Streak</div>
+        <span className="v">🔥 {session?.streak ?? 0}</span>
       </div>
       <div className="stat-pill" id="timer-ring">
-        <div className="v">{Logic.fmtDuration(elapsedMs)}</div>
-        <div className="l">Time</div>
+        <span className="v">{Logic.fmtDuration(elapsedMs)}</span>
       </div>
     </div>
   );

@@ -32,9 +32,6 @@ import type { Feature, FeatureCollection } from "geojson";
 type SVGSel = Selection<SVGSVGElement, unknown, null, undefined>;
 type GSel = Selection<SVGGElement, unknown, null, undefined>;
 
-// Pixels reserved on the left edge for the country bank (panel width + gutter).
-const BANK_RESERVE = 280;
-
 // A broad, vivid palette for the country tapestry. Graph-coloured against the
 // border adjacency so no two neighbours share one — duplicates only ever appear
 // far apart.
@@ -286,11 +283,15 @@ export const BuildView = {
       features: displayFeatures,
     };
 
-    // Reserve room on the LEFT for the country bank; inset the rest.
+    // Reserve room on the LEFT for the country bank, tracking its responsive CSS
+    // width (`clamp(200px, 24vw, 380px)` + 16px inset + ~24px gutter) so placed
+    // pieces never slip under the panel on any viewport.
+    const bankW = Math.max(200, Math.min(this.width * 0.24, 380));
+    const reserve = Math.round(bankW) + 40;
     this.projection = geoEqualEarth().fitExtent(
       [
-        [BANK_RESERVE, 30],
-        [Math.max(BANK_RESERVE + 130, this.width - 30), this.height - 30],
+        [reserve, 30],
+        [Math.max(reserve + 130, this.width - 30), this.height - 30],
       ],
       displayColl
     );

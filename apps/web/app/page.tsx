@@ -22,7 +22,7 @@ import { StatsDashboard } from "@/components/StatsDashboard";
 // The quiz families, each a card on the landing screen.
 type CardType = ModeGroup; // "map" | "expert" | "borders" | "build"
 const CARDS: { type: CardType; icon: string; title: string; tag: string; blurb: string }[] = [
-  { type: "map", icon: "🗺️", title: "Map identification", tag: "Find it · name it", blurb: "Pin a country on the world map, or name the one that's glowing." },
+  { type: "map", icon: "🗺️", title: "Map ID", tag: "Find it · name it", blurb: "Pin a country on the world map, or name the one that's glowing." },
   { type: "expert", icon: "🚩", title: "Quiz", tag: "Flags · capitals · borders", blurb: "Rapid-fire flags, capitals, and framed borders. No world map — just recall." },
   { type: "build", icon: "🧩", title: "Puzzle", tag: "Build a continent", blurb: "Drag every country into place and rebuild a continent." },
 ];
@@ -46,6 +46,9 @@ export default function MenuPage() {
   const exportState = useAtlasStore((s) => s.exportState);
   const importState = useAtlasStore((s) => s.importState);
   const resetProgress = useAtlasStore((s) => s.resetProgress);
+  const stats = useAtlasStore((s) => s.stats);
+  const leitner = useAtlasStore((s) => s.leitner);
+  const history = useAtlasStore((s) => s.history);
 
   const [selected, setSelected] = useState<CardType | null>(null);
   const [showStats, setShowStats] = useState(false);
@@ -195,6 +198,37 @@ export default function MenuPage() {
   const modeOn = (id: ModeId) => hydrated && settings.modes.includes(id);
   const card = CARDS.find((c) => c.type === selected);
 
+  // Home stats — all derived from persisted progress (guarded on hydration so
+  // SSR and the first client render agree).
+  const totalCountries = ready ? DataLayer.countries.length : 0;
+  const accPct = hydrated && stats.answered ? Math.round((stats.correct / stats.answered) * 100) : null;
+  // Mastered = distinct countries whose best Leitner box across modes is 5.
+  const masteredCount = (() => {
+    if (!hydrated) return 0;
+    const best: Record<string, number> = {};
+    for (const k in leitner) {
+      const id = k.split(":")[0];
+      best[id] = Math.max(best[id] || 1, leitner[k].box);
+    }
+    return Object.values(best).filter((b) => b >= 5).length;
+  })();
+  // Most-played family, from answer history. Borders live on the Quiz card.
+  const mostPlayed = (() => {
+    if (!hydrated || !history.length) return null;
+    const tally: Record<"map" | "expert" | "build", number> = { map: 0, expert: 0, build: 0 };
+    for (const h of history) {
+      const g = MODES[h.mode]?.group;
+      if (g === "map") tally.map++;
+      else if (g === "expert" || g === "borders") tally.expert++;
+    }
+    let top: CardType | null = null;
+    let max = 0;
+    for (const t of ["map", "expert", "build"] as const) {
+      if (tally[t] > max) { max = tally[t]; top = t; }
+    }
+    return top;
+  })();
+
   // Map/Quiz require at least one mode switched on. In the Quiz card, Borders (its
   // own group) also counts as a valid selection.
   const noModes =
@@ -308,36 +342,65 @@ export default function MenuPage() {
 
   return (
     <section className="screen-menu">
-      <div className="menu-hero">
-        <div className="logo" />
-        <h1>GeoBean</h1>
-        <p>{selected ? card?.blurb : "Compulsive geography."}</p>
+      {/* Top bar: brand plate + utilities */}
+      <div className="menu-top">
+        <div className="mt-left">
+          <div className="brand">
+            <div className="logo" />
+            <h1>GeoBean</h1>
+          </div>
+        </div>
+        <div className="mt-right">
+          <button className="icon-btn" title="Your progress" onClick={() => setShowStats(true)}>📊</button>
+          <button
+            className={"icon-btn" + (hydrated && settings.sound ? " active" : "")}
+            title={"Sound (" + (settings.sound ? "on" : "off") + ")"}
+            onClick={toggleSound}
+          >
+            {hydrated && settings.sound ? "🔊" : "🔇"}
+          </button>
+        </div>
       </div>
 
-      {/* Landing: the three quiz cards */}
       {!selected && (
-        <div className="quiz-cards">
-          {CARDS.map((c, i) => (
-            <button key={c.type} className={`quiz-card qc-${c.type}`} onClick={() => openCard(c.type)} disabled={!ready}>
-              <span className="qc-no" aria-hidden>{String(i + 1).padStart(2, "0")}</span>
-              <span className="qc-icon" aria-hidden>{c.icon}</span>
-              <span className="qc-tag">{c.tag}</span>
-              <span className="qc-title">{c.title}</span>
-              <span className="qc-blurb">{c.blurb}</span>
-              <span className="qc-go">Play ▸</span>
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="menu-hero">
+            {hydrated && stats.bestStreak > 0 && (
+              <div className="badge">🔥 {stats.bestStreak}-in-a-row best — beat it</div>
+            )}
+            <h1>Pick your game</h1>
+            <p>
+              {totalCountries ? `${totalCountries} countries. ` : ""}
+              {accPct !== null ? `${accPct}% accuracy. ` : ""}
+              Beat yesterday&apos;s you.
+            </p>
+          </div>
+
+          {/* Landing: the three quiz cards */}
+          <div className="quiz-cards">
+            {CARDS.map((c) => (
+              <button key={c.type} className={`quiz-card qc-${c.type}`} onClick={() => openCard(c.type)} disabled={!ready}>
+                {mostPlayed === c.type && <span className="qc-badge" aria-hidden>Most played</span>}
+                <span className="qc-icon" aria-hidden>{c.icon}</span>
+                <span className="qc-title">{c.title}</span>
+                <span className="qc-blurb">{c.blurb}</span>
+                <span className="qc-go">Play ▸</span>
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Drill-down: settings for the chosen card */}
       {selected && (
-        <div className="menu-card">
-          <button className="settings-back" onClick={() => setSelected(null)}>← All quizzes</button>
+        <div className={`menu-card qc-${selected}`}>
+          <button className="settings-back" onClick={() => setSelected(null)}>← All games</button>
           <div className="settings-head">
-            <span className="qc-icon sm" aria-hidden>{card?.icon}</span>
+            <span className="qc-icon" aria-hidden>{card?.icon}</span>
             <h2>{card?.title}</h2>
           </div>
+
+          <div className={isBuild ? undefined : "setup-grid"}>
 
           {selected === "map" && (
             <div className="section">
@@ -426,7 +489,9 @@ export default function MenuPage() {
             </>
           )}
 
-          <div className="section" style={{ marginBottom: 0 }}>
+          </div>
+
+          <div className="section" style={{ marginBottom: 0, marginTop: 18 }}>
             <button className="btn btn-go" onClick={start} disabled={!ready || noModes}>
               {isBuild ? "Build it ▸" : "Start ▸"}
             </button>
@@ -434,18 +499,18 @@ export default function MenuPage() {
         </div>
       )}
 
-      <div className="menu-footer">
-        <button className="btn ghost small" onClick={() => setShowStats(true)}>📊 Stats</button>
-        <button className="btn ghost small" onClick={doExport}>Export</button>
-        <button className="btn ghost small" onClick={() => fileRef.current?.click()}>Import</button>
-        <button className="btn ghost small" title="Reset all progress" onClick={doReset}>Reset</button>
-        <button
-          className={"btn ghost small" + (hydrated && settings.sound ? " active" : "")}
-          title={"Sound (" + (settings.sound ? "on" : "off") + ")"}
-          onClick={toggleSound}
-        >
-          {hydrated && settings.sound ? "🔊" : "🔇"}
-        </button>
+      <div className={"menu-footer" + (selected ? " setup" : "")}>
+        {accPct !== null && (
+          <span className="fstat acc"><b>{accPct}%</b> lifetime accuracy</span>
+        )}
+        {totalCountries > 0 && (
+          <span className="fstat mastered"><b>{masteredCount} / {totalCountries}</b> mastered</span>
+        )}
+        <div className="flinks">
+          <button className="flink" onClick={doExport}>Export</button>
+          <button className="flink" onClick={() => fileRef.current?.click()}>Import</button>
+          <button className="flink" title="Reset all progress" onClick={doReset}>Reset</button>
+        </div>
         <input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => doImport(e.target.files?.[0])} />
       </div>
 

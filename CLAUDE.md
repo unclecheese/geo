@@ -25,9 +25,12 @@ letters hangman-style (difficult).
 ## Stack & commands
 
 Next.js 15.5 (App Router) · React · TypeScript · **zustand** (persisted) ·
-**d3** + **topojson-client**. Plain CSS (no Tailwind) in `app/globals.css` — a
-"Field Atlas" theme driven by CSS variables (parchment surfaces on navy, serif
-type, brass/forest accents). Tests via **vitest**.
+**d3** + **topojson-client**. Plain CSS (no Tailwind) in `app/globals.css` — an
+"arcade sticker" theme driven by CSS variables (muted dusk-indigo stage with a
+dot grid; paper cards on hot amber/coral/green accents; hard offset shadows, no
+blurs; slightly tilted cards; **Archivo Black** display + **Space Grotesk** body).
+The design spec is `DESIGN.md`; reference mockups in `GeoBean Redesign.html`.
+Tests via **vitest**.
 
 ```sh
 npm run dev      # http://localhost:3000

@@ -1,23 +1,22 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Spectral } from "next/font/google";
+import { Archivo_Black, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { DataProvider } from "@/components/DataProvider";
 import { FxCanvas } from "@/components/FxCanvas";
 import { Toast } from "@/components/Toast";
 
-// Field Atlas type system: a characterful old-style serif for display, a calm
-// book serif for body/UI. Self-hosted by next/font (no runtime CDN).
-const display = Fraunces({
+// Arcade-sticker type system: a heavy uppercase display face for headings and
+// buttons, a clean geometric grotesk for body/UI. Self-hosted by next/font (no
+// runtime CDN).
+const display = Archivo_Black({
   subsets: ["latin"],
-  weight: ["400", "600", "700", "800", "900"],
-  style: ["normal", "italic"],
+  weight: ["400"],
   variable: "--font-display",
   display: "swap",
 });
-const body = Spectral({
+const body = Space_Grotesk({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
-  style: ["normal", "italic"],
+  weight: ["400", "500", "600", "700"],
   variable: "--font-body",
   display: "swap",
 });

@@ -97,8 +97,6 @@ export default function BordersPage() {
             <div className="logo" />
             <h1>GeoBean</h1>
           </div>
-        </div>
-        <div className="st-right">
           <button
             className={"icon-btn sound-btn" + (settings.sound ? " active" : "")}
             title={"Sound (" + (settings.sound ? "on" : "off") + ")"}

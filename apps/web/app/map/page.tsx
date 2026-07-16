@@ -153,7 +153,7 @@ export default function MapPage() {
         <span aria-hidden>🔍</span> Double-click anywhere to zoom and centre on that area.
       </div>
 
-      {/* Screen-top bar */}
+      {/* Screen-top bar — toggles sit by the plate; the score strip owns the right */}
       <div className="screen-top">
         <div className="st-left">
           <button className="icon-btn" title="Back to menu" onClick={backToMenu}>←</button>
@@ -161,8 +161,6 @@ export default function MapPage() {
             <div className="logo" />
             <h1>GeoBean</h1>
           </div>
-        </div>
-        <div className="st-right">
           <button
             className={"icon-btn heatmap-btn" + (settings.heatmap ? " active" : "")}
             title="Mastery heatmap"
