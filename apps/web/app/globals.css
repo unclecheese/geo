@@ -662,7 +662,11 @@ svg.spark { width: 100%; height: 70px; display: block; }
   position: relative; width: 100%; border-radius: 9px;
   border: 2px solid var(--ink); background: var(--white); color: var(--ink);
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
-  padding: 6px 4px 5px; cursor: grab; touch-action: none; user-select: none;
+  padding: 6px 4px 5px; cursor: grab; user-select: none;
+  /* pan-y lets a vertical swipe scroll the bank on touch; a rightward drag
+     toward the map (all drops are right of the bank) still starts a drag, and a
+     browser-claimed vertical pan fires pointercancel -> _cancelDrag cleans up. */
+  touch-action: pan-y;
   box-shadow: 2px 2px 0 var(--ink); transition: transform .1s ease, box-shadow .1s ease;
 }
 .build-tile:hover { transform: translateY(-2px); box-shadow: 3px 4px 0 var(--ink); }
@@ -735,6 +739,24 @@ svg.spark { width: 100%; height: 70px; display: block; }
   background: var(--white); color: var(--ink); font-weight: 600; box-shadow: 2px 2px 0 var(--ink);
 }
 .bd-submit { margin: 14px auto 0; display: block; }
+
+/* ---------- Touch devices: enlarge tap targets to >= 44px ----------
+   Compact desktop density stays; coarse pointers (tablets/phones) get bigger
+   hit areas per the DESIGN.md >= 44px rule. */
+@media (pointer: coarse) {
+  .icon-btn { width: 44px; height: 44px; }
+  .seg button { padding: 12px 6px; }
+  .settings-back { padding: 11px 15px; }
+  .border-grid.multi .bsel { padding: 11px 16px; }
+  .ac-opt { padding: 14px 14px; }
+  .hint-btn { padding: 10px 12px; }
+  .bd-nums button { min-width: 40px; height: 40px; }
+  .close-x { width: 40px; height: 40px; }
+  /* quiet footer links: keep the look, widen the hit area vertically */
+  .menu-footer .flink { padding: 11px 4px; }
+  /* puzzle tile "reveal spot" hint: bump the tiny corner target */
+  .tile-hint { width: 22px; height: 22px; font-size: 11px; }
+}
 
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {

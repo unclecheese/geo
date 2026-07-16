@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { usePinchGuard } from "@/lib/use-pinch-guard";
+import { useCoarsePointer } from "@/lib/use-coarse-pointer";
 import { BuildGraph } from "@/lib/build-graph";
 import { Audio2 } from "@/lib/fx";
 import { useAtlasStore } from "@geobean/core";
@@ -17,6 +18,7 @@ export default function BuildPage() {
   const router = useRouter();
   const { ready } = useData();
   usePinchGuard();
+  const coarse = useCoarsePointer();
 
   const active = useBuildStore((s) => s.active);
   const done   = useBuildStore((s) => s.done);
@@ -82,7 +84,7 @@ export default function BuildPage() {
 
       {/* Persistent zoom tip (bottom-right, clear of banner/bank/name prompt) */}
       <div className="map-tip tip-br" role="note">
-        <span aria-hidden>🔍</span> Double-click anywhere to zoom and centre on that area.
+        <span aria-hidden>🔍</span> {coarse ? "Double-tap" : "Double-click"} anywhere to zoom and centre on that area.
       </div>
 
       {/* Screen-top bar */}

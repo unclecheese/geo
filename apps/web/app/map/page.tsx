@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePinchGuard } from "@/lib/use-pinch-guard";
+import { useCoarsePointer } from "@/lib/use-coarse-pointer";
 import { MODES, Logic, DataLayer, useAtlasStore, useQuizStore } from "@geobean/core";
 import { useData } from "@/components/DataProvider";
 import { MapViewComponent } from "@/components/MapView";
@@ -18,6 +19,7 @@ export default function MapPage() {
   const router = useRouter();
   const { ready } = useData();
   usePinchGuard();
+  const coarse = useCoarsePointer();
 
   const session      = useQuizStore((s) => s.session);
   const current      = useQuizStore((s) => s.current);
@@ -150,7 +152,7 @@ export default function MapPage() {
 
       {/* Persistent map tip */}
       <div className="map-tip" role="note">
-        <span aria-hidden>🔍</span> Double-click anywhere to zoom and centre on that area.
+        <span aria-hidden>🔍</span> {coarse ? "Double-tap" : "Double-click"} anywhere to zoom and centre on that area.
       </div>
 
       {/* Screen-top bar — toggles sit by the plate; the score strip owns the right */}
