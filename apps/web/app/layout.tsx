@@ -78,6 +78,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <FxCanvas />
         <DataProvider>{children}</DataProvider>
         <Toast />
+        {/* Phones in portrait: gate the app behind a rotate prompt. The map and
+            puzzle need the width, and browsers can't reliably lock orientation,
+            so we ask. Shown purely via CSS (see .rotate-gate) on small portrait
+            screens; tablets and desktop never see it. */}
+        <div className="rotate-gate" role="alertdialog" aria-label="Rotate your device to landscape">
+          <div className="brand">
+            <div className="logo" />
+            <h1>GeoBean</h1>
+          </div>
+          <div className="rg-icon" aria-hidden>📱</div>
+          <h2>Rotate to landscape</h2>
+          <p>GeoBean needs a bit more room — turn your phone sideways to play.</p>
+        </div>
       </body>
     </html>
   );
