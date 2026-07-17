@@ -55,13 +55,13 @@ export const metadata: Metadata = {
     description: DESCRIPTION,
     url: "/",
     locale: "en_US",
-    // og:image is supplied automatically by app/opengraph-image.tsx
+    // og:image is supplied automatically by app/opengraph-image.png
   },
   twitter: {
     card: "summary_large_image",
     title: TITLE,
     description: DESCRIPTION,
-    // twitter:image is supplied automatically by app/twitter-image.tsx
+    // twitter:image is supplied automatically by app/twitter-image.png
   },
 };
 

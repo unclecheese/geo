@@ -27,3 +27,6 @@ settings.local.json
 # scratch / temp render files
 scratch_*
 .vercel
+
+# Redesign export bundle (source of brand/ + reference html)
+/Geography app redesign.zip

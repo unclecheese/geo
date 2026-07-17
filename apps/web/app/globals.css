@@ -101,10 +101,8 @@ button { font-family: inherit; cursor: pointer; }
   transform: rotate(-1.2deg);
 }
 .brand .bean, .brand .logo {
-  width: 30px; height: 26px; flex: none;
-  background: var(--bean);
-  border: 2px solid var(--ink);
-  border-radius: 52% 48% 55% 45% / 60% 60% 42% 40%;
+  width: 28px; height: 21px; flex: none;
+  background: url(/geobean-mark.svg) center / contain no-repeat;
 }
 .brand h1 {
   font-family: var(--ff-display); font-size: 19px; margin: 0;
@@ -112,7 +110,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .brand h1 span { display: none; } /* the "trainer" sub-word is dropped in the plate */
 .brand.sm { border-width: 2px; box-shadow: 2px 2px 0 var(--ink); padding: 7px 13px 7px 9px; }
-.brand.sm .bean, .brand.sm .logo { width: 24px; height: 21px; }
+.brand.sm .bean, .brand.sm .logo { width: 24px; height: 18px; }
 .brand.sm h1 { font-size: 15px; }
 
 /* ---------- Buttons ---------- */
